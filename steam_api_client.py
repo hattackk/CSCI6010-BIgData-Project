@@ -1,4 +1,5 @@
 import requests
+import urllib
 
 class SteamAPIClient:
     """
@@ -103,11 +104,11 @@ class SteamAPIClient:
             "json": "1",
             'filter': filter,
             'language': language,
-            'day_range': day_range,
-            'cursor': cursor,
+            'day_range': min(365,day_range),
+            'cursor': urllib.parse.quote(cursor),
             'review_type': review_type,
             'purchase_type': purchase_type,
-            'num_per_page': num_per_page,
+            'num_per_page': min(100,num_per_page),
             'filter_offtopic_activity': filter_offtopic_activity
         }
         return self._make_request(self.reviews_base_url, interface="appreviews", method=str(app_id), version=None, params=params)
