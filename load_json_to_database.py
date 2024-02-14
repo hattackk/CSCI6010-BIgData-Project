@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 import click
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import create_engine
-from database_tables import games_table, Base
+from database_tables import games_table, Base, game_review_summary_table, game_rating_table
 from sqlalchemy.inspection import inspect
 
 # load the .env file and set up variables
@@ -60,7 +60,7 @@ def process_game_file(games_file):
         game_rating.append(
             dict(
                 game_id=value.get('appid'),
-                score_rank=value.get('score_rank'),
+                score_rank=value.get('score_rank') if len(value.get('score_rank')) > 0 else 0,
                 positive=value.get('positive'),
                 negative=value.get('negative'),
                 userscore=value.get('userscore'),
@@ -76,6 +76,8 @@ def process_game_file(games_file):
     Base.metadata.create_all(engine)
 
     with engine.connect() as conn:
+
+        # TODO: (MJPM, 02/14/24) break into function, remove duplicate code
         for record in games:
             primary_keys = [key.name for key in inspect(games_table).primary_key]
             stmt = insert(games_table).values(record)
@@ -91,6 +93,39 @@ def process_game_file(games_file):
             )
 
             result = conn.execute(update_stmt)
+
+        for record in games_review_summary:
+            primary_keys = [key.name for key in inspect(game_review_summary_table).primary_key]
+            stmt = insert(game_review_summary_table).values(record)
+            # define dict of non-primary keys for updating
+            update_dict = {
+                c.name: c
+                for c in stmt.excluded
+                if not c.primary_key
+            }
+            update_stmt = stmt.on_conflict_do_update(
+                index_elements=primary_keys,
+                set_=update_dict,
+            )
+
+            result = conn.execute(update_stmt)
+
+        for record in game_rating:
+            primary_keys = [key.name for key in inspect(game_rating_table).primary_key]
+            stmt = insert(game_rating_table).values(record)
+            # define dict of non-primary keys for updating
+            update_dict = {
+                c.name: c
+                for c in stmt.excluded
+                if not c.primary_key
+            }
+            update_stmt = stmt.on_conflict_do_update(
+                index_elements=primary_keys,
+                set_=update_dict,
+            )
+
+            result = conn.execute(update_stmt)
+
         conn.commit()
 
 
