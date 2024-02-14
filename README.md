@@ -36,8 +36,24 @@ You can retrieve the complete list of public apps from the Steam Web API using t
 apps = steam_client.get_app_list()
 print(apps)
 ```
-
 This will return a list of dictionaries, each representing an application with keys 'appid' and 'name'.
+### Load jsons into postgres instance
+
+Once you have a json with the review or game data, you can load it into the postgress instance:
+```
+python load_json_to_database.py  --games_file path_to_games_file.json
+python load_json_to_database.py --review_file path_to_review_file.json
+python load_json_to_database.py --games_file path_to_games_file.json --review_file path_to_review_file.json
+```
+The loading tool uses the `dot_env` package to parse a `.env` file which should be included in the root directory 
+but ***NOT*** added to the github repo. here is an example:
+```
+DB_USER="{USERNAME}"
+DB_PWD="{PASSWORD}"
+DB_HOST="{HOST_NAME}"
+DB_PORT="{PORT}"2`
+DB_DATABASE="{DB NAME}"
+```
 
 ### Retrieving News for an App
 
@@ -51,6 +67,8 @@ print(news)
 ### Handling Errors
 
 If an error occurs during the API request, the methods will return `None`. Make sure to handle this case in your code.
+
+
 
 ## Contributing
 
