@@ -2,8 +2,10 @@ import requests
 import warnings
 
 from urllib.parse import quote
-
+import requests.exceptions as req_exc
 from icecream import ic
+
+
 class SteamAPIClient:
     """
     A client for interacting with the Steam Web API.
@@ -44,7 +46,13 @@ class SteamAPIClient:
         if self.api_key:
             params = params or {}
             params['key'] = self.api_key
-        response = requests.get(url, params=params)
+
+        try:
+            response = requests.get(url, params=params)
+        except req_exc.ConnectionError as e:
+            print(f"Failed to make request: {e}")
+            return None
+
         if response.status_code == 200:
             return response.json()
         else:
