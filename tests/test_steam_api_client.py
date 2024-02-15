@@ -3,77 +3,46 @@ from unittest import TestCase
 from steam_api_client import SteamAPIClient
 
 
-def test_make_request_success(steam_api_client, monkeypatch):
-    # Mock _make_request to return a dummy response
-    def mock_make_request(base_url,interface, method, version, params=None):
-        return {"status": "success"}
+def test_make_request_success(steam_api_client):
+    response = steam_api_client._make_request("https://store.steampowered.com/", interface="appreviews")
+    assert response == {"success": 2}
 
-    monkeypatch.setattr(steam_api_client, "_make_request", mock_make_request)
 
-    response = steam_api_client._make_request("steam.com","ISteamNews", "GetNewsForApp", 2, params={'appid': 570})
-    assert response == {"status": "success"}
-
-def test_make_request_failure(steam_api_client, monkeypatch):
+def test_make_request_failure(steam_api_client):
     # Mock _make_request to return None for failure
-    def mock_make_request(base_url,interface, method, version, params=None):
-        return None
 
-    monkeypatch.setattr(steam_api_client, "_make_request", mock_make_request)
-
-    response = steam_api_client._make_request("steam.com","InvalidInterface", "InvalidMethod", 99)
+    response = steam_api_client._make_request("https://steam.com", "InvalidInterface", "InvalidMethod", 99)
     assert response is None
 
-def test_get_news_for_app_success(steam_api_client, monkeypatch):
-    # Mock _make_request to return a dummy response
-    def mock_make_request(base_url,interface, method, version, params=None):
-        return {"status": "success"}
 
-    monkeypatch.setattr(steam_api_client, "_make_request", mock_make_request)
-
+def test_get_news_for_app_success(steam_api_client):
     response = steam_api_client.get_news_for_app(570)  # Dota 2 AppID
-    assert response == {"status": "success"}
+    assert 'appnews' in response.keys()
+    assert response['appnews']['count'] > 0
 
-def test_get_news_for_app_failure(steam_api_client, monkeypatch):
-    # Mock _make_request to return None for failure
-    def mock_make_request(base_url,interface, method, version, params=None):
-        return None
 
-    monkeypatch.setattr(steam_api_client, "_make_request", mock_make_request)
-
-    response = steam_api_client.get_news_for_app(999999999)  # Invalid AppID
+def test_get_news_for_app_failure(steam_api_client):
+    response = steam_api_client.get_news_for_app(-1)  # Invalid AppID
     assert response is None
+
 
 def test_initialization_without_api_key():
     steam_api_client = SteamAPIClient()
     assert steam_api_client.api_key is None
 
 
-def test_get_app_list_success(steam_api_client, monkeypatch):
-    # Define a dummy response
-    dummy_response = {
-        "applist": {
-            "apps": [
-                {"appid": 1, "name": "App 1"},
-                {"appid": 2, "name": "App 2"},
-                {"appid": 3, "name": "App 3"}
-            ]
-        }
-    }
-
-    # Mock _make_request to return the dummy response
-    def mock_make_request(base_url,interface, method, version, params=None):
-        return dummy_response
-
-    monkeypatch.setattr(steam_api_client, "_make_request", mock_make_request)
-
-    # Call the method
+def test_get_app_list_success(steam_api_client):
     apps = steam_api_client.get_app_list()
 
     # Verify the response
-    assert apps == dummy_response["applist"]["apps"]
+    assert len(apps) > 0
+    for app in apps:
+        assert len(app.keys()) == 2
+        assert 'appid' in app.keys()
+        assert 'name' in app.keys()
 
 
-def test_get_reviews_for_app_success(steam_api_client, monkeypatch):
+def test_get_reviews_for_app_success(steam_api_client):
     # Define a dummy response
     dummy_response = {
         "success": 1,
@@ -110,22 +79,21 @@ def test_get_reviews_for_app_success(steam_api_client, monkeypatch):
                 "steam_purchase": True,
                 "received_for_free": False,
                 "written_during_early_access": False,
-                "developer_response": "Thank you for your review!",
-                "timestamp_dev_responded": 1635654800
+                "hidden_in_steam_china": True,
+                "steam_china_location": ""
+
             },
             # Additional review objects can be added for testing purposes
         ]
     }
 
-    # Mock _make_request to return the dummy response
-    def mock_make_request(base_url, interface, method, version, params=None):
-        return dummy_response
-
-    monkeypatch.setattr(steam_api_client, "_make_request", mock_make_request)
-
     # Call the method
-    reviews = steam_api_client.get_reviews_for_app(570)  # Dota 2 AppID
+    reviews = steam_api_client.get_reviews_for_app(570, num_per_page=1)  # Dota 2 AppID
 
-    # Verify the response
-    TestCase().assertDictEqual(reviews, dummy_response)
+    # verify the keys
+    assert set(reviews.keys()) == set(dummy_response.keys())
+    assert set(reviews['reviews'][0].keys()) == set(dummy_response['reviews'][0].keys())
+    assert set(reviews['reviews'][0]['author'].keys()) == set(dummy_response['reviews'][0]['author'].keys())
+    assert set(reviews['query_summary'].keys()) == set(dummy_response['query_summary'].keys())
+
 
