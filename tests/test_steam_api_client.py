@@ -1,9 +1,6 @@
 import pytest
 from steam_api_client import SteamAPIClient
 
-@pytest.fixture
-def steam_api_client():
-    return SteamAPIClient()
 
 def test_make_request_success(steam_api_client, monkeypatch):
     # Mock _make_request to return a dummy response
