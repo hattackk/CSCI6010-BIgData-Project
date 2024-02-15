@@ -76,5 +76,5 @@ steam_users_table = Table(
     Column('playtime_forever', Integer),
     Column('playtime_last_two_weeks', Integer),
     Column('playtime_at_review', Integer),
-    Column('last_played', Integer, ForeignKey('games.game_id'))
+    Column('last_played', Integer)
 )
