@@ -1,4 +1,5 @@
 import pytest
+from unittest import TestCase
 from steam_api_client import SteamAPIClient
 
 
@@ -46,6 +47,7 @@ def test_initialization_without_api_key():
     steam_api_client = SteamAPIClient()
     assert steam_api_client.api_key is None
 
+
 def test_get_app_list_success(steam_api_client, monkeypatch):
     # Define a dummy response
     dummy_response = {
@@ -69,6 +71,7 @@ def test_get_app_list_success(steam_api_client, monkeypatch):
 
     # Verify the response
     assert apps == dummy_response["applist"]["apps"]
+
 
 def test_get_reviews_for_app_success(steam_api_client, monkeypatch):
     # Define a dummy response
@@ -124,4 +127,5 @@ def test_get_reviews_for_app_success(steam_api_client, monkeypatch):
     reviews = steam_api_client.get_reviews_for_app(570)  # Dota 2 AppID
 
     # Verify the response
-    assert reviews == dummy_response
+    TestCase().assertDictEqual(reviews, dummy_response)
+

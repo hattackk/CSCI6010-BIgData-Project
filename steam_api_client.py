@@ -1,6 +1,9 @@
 import requests
-import urllib
+import warnings
 
+from urllib.parse import quote
+
+from icecream import ic
 class SteamAPIClient:
     """
     A client for interacting with the Steam Web API.
@@ -64,7 +67,7 @@ class SteamAPIClient:
             'count': count
         }
         return self._make_request(self.base_url, "ISteamNews", "GetNewsForApp", 2, params=params)
-    
+
     def get_app_list(self):
         """
         Retrieves the complete list of public apps from the Steam Web API.
@@ -81,7 +84,7 @@ class SteamAPIClient:
         else:
             return []
 
-    def get_reviews_for_app(self, app_id, filter="all", language="all", day_range=365, cursor="*",
+    def get_reviews_for_app(self, app_id, filter="all", language="all", day_range=None, cursor="*",
                             review_type="all", purchase_type="steam", num_per_page=20, filter_offtopic_activity=None):
         """
         Retrieves reviews for a specific app from the Steam Web API.
@@ -100,12 +103,19 @@ class SteamAPIClient:
         Returns:
             dict or None: The JSON response containing reviews, or None if the request fails.
         """
+        if day_range is None:
+            day_range = 365
+        if day_range > 365:
+            warnings.warn("day_range limited to 365")
+            day_range = 365
+        if cursor != '*':
+            cursor = quote(cursor)
         params = {
             "json": "1",
             'filter': filter,
             'language': language,
-            'day_range': min(365, day_range),
-            'cursor': urllib.parse.quote(cursor),
+            'day_range': day_range,
+            'cursor': cursor,
             'review_type': review_type,
             'purchase_type': purchase_type,
             'num_per_page': min(100, num_per_page),
