@@ -1,11 +1,18 @@
 import json
 import os
+from typing import List, Dict
 
 from dotenv import load_dotenv
 import click
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import create_engine
-from database_tables import games_table, Base, game_review_summary_table, game_rating_table
+from database_tables import (
+    Table, Base,
+    games_table, game_review_summary_table, game_rating_table,
+    steam_users_table, game_reviews_table
+)
+
+
 from sqlalchemy.inspection import inspect
 
 # load the .env file and set up variables
@@ -18,7 +25,27 @@ db_db = os.environ.get("DB_DATABASE")
 DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
 
 
-def process_game_file(games_file):
+def add_or_update(record_list: List[Dict], table: Table, conn):
+    for record in record_list:
+        primary_keys = [key.name for key in inspect(table).primary_key]
+        stmt = insert(table).values(record)
+        # define dict of non-primary keys for updating
+        update_dict = {
+            c.name: c
+            for c in stmt.excluded
+            if not c.primary_key
+        }
+        update_stmt = stmt.on_conflict_do_update(
+            index_elements=primary_keys,
+            set_=update_dict,
+        )
+
+        result = conn.execute(update_stmt)
+
+    conn.commit()
+
+
+def process_game_file(games_file, conn):
     # load the games_file
     with open(games_file, 'r') as f:
         games_file = json.loads(f.read())
@@ -70,67 +97,57 @@ def process_game_file(games_file):
                 median_2weeks=value.get('median_2weeks')
             )
         )
-
-    # set up the sql alchemy connection
-    engine = create_engine(DATABASE_URI)
-    Base.metadata.create_all(engine)
-
-    with engine.connect() as conn:
-
-        # TODO: (MJPM, 02/14/24) break into function, remove duplicate code
-        for record in games:
-            primary_keys = [key.name for key in inspect(games_table).primary_key]
-            stmt = insert(games_table).values(record)
-            # define dict of non-primary keys for updating
-            update_dict = {
-                c.name: c
-                for c in stmt.excluded
-                if not c.primary_key
-            }
-            update_stmt = stmt.on_conflict_do_update(
-                index_elements=primary_keys,
-                set_=update_dict,
-            )
-
-            result = conn.execute(update_stmt)
-
-        for record in games_review_summary:
-            primary_keys = [key.name for key in inspect(game_review_summary_table).primary_key]
-            stmt = insert(game_review_summary_table).values(record)
-            # define dict of non-primary keys for updating
-            update_dict = {
-                c.name: c
-                for c in stmt.excluded
-                if not c.primary_key
-            }
-            update_stmt = stmt.on_conflict_do_update(
-                index_elements=primary_keys,
-                set_=update_dict,
-            )
-
-            result = conn.execute(update_stmt)
-
-        for record in game_rating:
-            primary_keys = [key.name for key in inspect(game_rating_table).primary_key]
-            stmt = insert(game_rating_table).values(record)
-            # define dict of non-primary keys for updating
-            update_dict = {
-                c.name: c
-                for c in stmt.excluded
-                if not c.primary_key
-            }
-            update_stmt = stmt.on_conflict_do_update(
-                index_elements=primary_keys,
-                set_=update_dict,
-            )
-
-            result = conn.execute(update_stmt)
-
-        conn.commit()
+    add_or_update(games, games_table, conn)
+    add_or_update(game_rating, game_rating_table, conn)
+    add_or_update(games_review_summary, game_review_summary_table, conn)
 
 
-def process_review_file(review_file):
-    pass
+def process_review_file(review_file, conn):
+    game_reviews = []
+    steam_users = []
+    with open(review_file, 'r') as file:
+        for line in file:
+            try:
+                json_obj = json.loads(line.strip())
+                user = json_obj.get('author')
+
+                game_reviews.append(
+                    dict(
+                        recommendationid=json_obj.get('recommendationid'),
+                        author=user.get('steamid'),
+                        language=json_obj.get('language'),
+                        review=json_obj.get('review'),
+                        timestamp_created=json_obj.get('timestamp_created'),
+                        timestamp_updated=json_obj.get('timestamp_updated'),
+                        voted_up=json_obj.get('voted_up'),
+                        votes_up=json_obj.get('votes_up'),
+                        votes_funny=json_obj.get('votes_funny'),
+                        weighted_vote_score=json_obj.get('weighted_vote_score'),
+                        comment_count=json_obj.get('comment_count'),
+                        steam_purchase=json_obj.get('steam_purchase'),
+                        received_for_free=json_obj.get('received_for_free'),
+                        written_during_early_access=json_obj.get('written_during_early_access'),
+                        hidden_in_steam_china=json_obj.get('hidden_in_steam_china'),
+                        steam_china_location=json_obj.get('steam_china_location'),
+                        application_id=json_obj.get('application_id')
+                    )
+                )
+                steam_users.append(
+                    dict(
+                        steamid=user.get('steamid'),
+                        num_games_owned=user.get('num_games_owned'),
+                        num_reviews=user.get('num_reviews'),
+                        playtime_forever=user.get('playtime_forever'),
+                        playtime_last_two_weeks=user.get('playtime_last_two_weeks'),
+                        playtime_at_review=user.get('playtime_at_review'),
+                        last_played=user.get('last_played'),
+                    )
+                )
+            except json.JSONDecodeError:
+                print(f"Error decoding JSON from line: {line}")
+                continue
+    add_or_update(steam_users, steam_users_table, conn)
+    add_or_update(game_reviews, game_reviews_table, conn)
 
 
 @click.command()
@@ -140,14 +157,15 @@ def main(games_file, review_file):
     # Connect to the database
     engine = create_engine(DATABASE_URI)
     Base.metadata.create_all(engine)
-    if not games_file:
-        games_file = 'top100in2weeks.json'
-    # Process the files
-    process_game_file(games_file)
+    with engine.connect() as conn:
+        if not games_file:
+            games_file = 'top100in2weeks.json'
+        # Process the files
+        process_game_file(games_file, conn)
 
-    if not review_file:
-        review_file = 'app_reviews_top_100_2weeks.json'
-    process_review_file(review_file)
+        if not review_file:
+            review_file = 'app_reviews_top_100_2weeks.json'
+        process_review_file(review_file, conn)
 
 
 if __name__ == '__main__':
