@@ -81,7 +81,7 @@ class SteamAPIClient:
         else:
             return []
 
-    def get_reviews_for_app(self, app_id, filter="all", language="all", day_range=0, cursor="*",
+    def get_reviews_for_app(self, app_id, filter="all", language="all", day_range=365, cursor="*",
                             review_type="all", purchase_type="steam", num_per_page=20, filter_offtopic_activity=None):
         """
         Retrieves reviews for a specific app from the Steam Web API.
