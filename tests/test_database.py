@@ -1,4 +1,4 @@
-from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy import inspect
 from database_tables import (
     games_table,
     game_rating_table,
@@ -12,7 +12,7 @@ def test_connection(connection):
 
 
 def test_tables_exist(connection):
-    inspector = Inspector.from_engine(connection.engine)
+    inspector = inspect(connection.engine)
     tables = inspector.get_table_names()
     assert 'games' in tables
     assert 'game_rating' in tables
