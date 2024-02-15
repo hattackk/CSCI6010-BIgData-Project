@@ -70,7 +70,7 @@ def parse_game_json(game_json) -> Tuple[List, List, List]:
             )
         )
         # here is what is need for the game_review_summary table
-        query_summary = value.get('query_summary')
+        query_summary = value.get('query_summary', {})
         games_review_summary.append(
             dict(
                 game_id=value.get('appid'),
@@ -86,7 +86,7 @@ def parse_game_json(game_json) -> Tuple[List, List, List]:
         game_rating.append(
             dict(
                 game_id=value.get('appid'),
-                score_rank=value.get('score_rank') if len(value.get('score_rank')) > 0 else 0,
+                score_rank=value.get('score_rank') if isinstance(value.get('score_rank'), int) else 0,
                 positive=value.get('positive'),
                 negative=value.get('negative'),
                 userscore=value.get('userscore'),
