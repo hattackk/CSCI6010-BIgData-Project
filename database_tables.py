@@ -67,7 +67,6 @@ game_reviews_table = Table(
      Column('application_id', Integer, ForeignKey('games.game_id'))
 )
 
-
 steam_users_table = Table(
     'steam_users', metadata,
     Column('steamid', BigInteger, primary_key=True),
@@ -77,4 +76,12 @@ steam_users_table = Table(
     Column('playtime_last_two_weeks', Integer),
     Column('playtime_at_review', Integer),
     Column('last_played', Integer)
+)
+
+
+
+game_review_download_status_table = Table(
+    'game_review_download_status', metadata,
+    Column('game_id', Integer, primary_key=True),
+    Column('status', String),
 )

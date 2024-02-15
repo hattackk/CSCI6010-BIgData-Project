@@ -2,7 +2,7 @@ import json, os, time
 
 import click
 from dotenv import load_dotenv
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select, update
 from tqdm import tqdm
 
 from icecream import ic
@@ -18,7 +18,7 @@ https://tqdm.github.io/docs/contrib.discord/
 from database_tables import (
     Base,
     game_review_summary_table, games_table, game_rating_table,
-    steam_users_table, game_reviews_table
+    steam_users_table, game_reviews_table, game_review_download_status_table
 )
 from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
 from steam_api_client import SteamAPIClient
@@ -79,32 +79,43 @@ def build_set_from_json_file(file_path, key):
 @click.option('--upload_to_db', is_flag=True, default=False, help='Upload data to the database')
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 def main(upload_to_db, write_json):
-
-    # TODO: (mjpm, 2/15/24) switch this to checking the database
-    already_processed_apps = build_set_from_json_file('game_reviews.json', 'application_id')
-    already_processed_apps = None
     games = {}
+    i = 0
+    while True and i < 5000:
+        stmt = select(game_review_download_status_table.c.game_id).where(
+            game_review_download_status_table.c.status == 'not_started'
+        ).order_by(game_review_download_status_table.c.game_id)
+        with engine.connect() as conn:
+            result = conn.execute(stmt).all()
+            if result:
+                app = result[0][0]
+            else:
+                break
+            if len(result) == 0:
+                break
+        print(f'{len(result)} games remaining, processing {app}')
 
-    # TODO: (mjpm, 2/15/24) this should also read from a table of unprocessed games
-    with open('games.json', 'r') as input_games:
-        games = json.load(input_games)
+        update_stmt = update(game_review_download_status_table).where(
+            game_review_download_status_table.c.game_id == app
+        ).values(
+            status='processing'
+        )
 
-    apps = list(games)
-    if already_processed_apps is not None:
-        temp_apps = []
-        for app in apps:
-            if app not in already_processed_apps:
-                temp_apps.append(app)
-        apps = temp_apps
+        # Execute the update statement
+        with engine.connect() as conn:
+            conn.execute(update_stmt)
+            conn.commit()
 
-    for app in tqdm(apps):
         time.sleep(0.5)
         response = steam_api_client.get_reviews_for_app(
             language='english',
             app_id=app, day_range=365,
             num_per_page=100
         )
-        games[app]['query_summary'] = response.get('query_summary', "None")
+        try:
+            games[app]['query_summary'] = response.get('query_summary', "None")
+        except KeyError:
+            games[app] = dict(query_summary=response.get('query_summary', "None"), appid=app)
         #  games -> top100in2weeks.json
         #  review -> app_review_top_100.json
         if upload_to_db:
@@ -112,15 +123,23 @@ def main(upload_to_db, write_json):
             # with hits the games_review_summary table only
             with engine.connect() as conn:
                 game, game_review_sum, game_rating = parse_game_json({app: games[app]})
-                add_or_update(game, games_table, conn)
                 add_or_update(game_review_sum, game_review_summary_table, conn)
-                add_or_update(game_rating, game_rating_table, conn)
 
                 for review in response.get('reviews', []):
                     review['application_id'] = app
                     single_review, single_user = parse_single_game_review(review)
                     add_or_update([single_user], steam_users_table, conn)
                     add_or_update([single_review], game_reviews_table, conn)
+
+                update_stmt = update(game_review_download_status_table).where(
+                    game_review_download_status_table.c.game_id == app
+                ).values(
+                    status='done'
+                )
+
+                # Execute the update statement
+                conn.execute(update_stmt)
+                conn.commit()
         if write_json:
             with open('game_updated.json', 'w') as json_results:
                 json.dump(games, json_results)
