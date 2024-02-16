@@ -72,8 +72,7 @@ game_reviews_table = Table(
     Column('application_id', Integer, ForeignKey('games.game_id')),
     Column('playtime_forever', Integer),
     Column('playtime_last_two_weeks', Integer),
-    Column('playtime_at_review', Integer),
-    Column('last_played', Integer)
+    Column('playtime_at_review', Integer)
 )
 
 
@@ -81,5 +80,6 @@ steam_users_table = Table(
     'steam_users', metadata,
     Column('steamid', BigInteger, primary_key=True),
     Column('num_games_owned', Integer),
-    Column('num_reviews', Integer)
+    Column('num_reviews', Integer),
+    Column('last_played', Integer)
 )
