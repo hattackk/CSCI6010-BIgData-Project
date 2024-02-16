@@ -202,12 +202,12 @@ def main(games_file, review_file):
     metadata.create_all(engine)
     with engine.connect() as conn:
         if not games_file:
-            games_file = 'games_top_100_2weeks.json'
+            games_file = 'data/games_top_100_2weeks.json'
         # Process the files
         process_game_file(games_file, conn)
 
         if not review_file:
-            review_file = 'app_reviews_top_100_2weeks.json'
+            review_file = 'data/app_reviews_top_100_2weeks.json'
         process_review_file(review_file, conn)
 
 
