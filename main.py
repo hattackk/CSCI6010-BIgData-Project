@@ -13,8 +13,6 @@ from database_tables import (
 from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
 from steam_api_client import SteamAPIClient
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
 load_dotenv()
 
 # database and api params
@@ -25,6 +23,10 @@ db_port = os.environ.get("DB_PORT")
 db_db = os.environ.get("DB_DATABASE")
 DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
 steam_api_client = SteamAPIClient(api_key=os.environ.get('STEAM_API_KEY'))
+
+LOG_LEVEL=logging.INFO
+
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
 
 '''
 app_list = steam_api_client.get_app_list()
@@ -76,13 +78,18 @@ def build_set_from_json_file(file_path, key):
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 def main(upload_to_db, write_json):
     engine = create_engine(DATABASE_URI)
+    if not engine:
+        logging.error(f"Failed to create engine with URI {DATABASE_URI}")
+        return
     metadata.create_all(engine)
     games = {}
     should_download_reviews = True
     while should_download_reviews:
-        stmt = select(game_review_download_status_table.c.game_id).where(
-            game_review_download_status_table.c.status == 'not_started'
-        ).order_by(game_review_download_status_table.c.game_id)
+        # game_review_download_status_table contains list of all games (in our dataset)
+        # select all the games that have not been started
+        stmt = select(game_review_download_status_table.c.game_id) \
+                .where(game_review_download_status_table.c.status == 'not_started') \
+                .order_by(game_review_download_status_table.c.game_id)
         with engine.connect() as conn:
             result = conn.execute(stmt).all()
             if not result or len(result) == 0:
@@ -164,6 +171,3 @@ def main(upload_to_db, write_json):
 
 if __name__ == '__main__':
     main()
-
-
-
