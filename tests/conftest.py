@@ -2,8 +2,7 @@ import os
 
 from dotenv import load_dotenv
 import pytest
-from sqlalchemy import create_engine, MetaData
-from sqlalchemy.engine.reflection import Inspector
+from sqlalchemy import create_engine
 
 from database_tables import Base
 from steam_api_client import SteamAPIClient

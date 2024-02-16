@@ -1,25 +1,19 @@
-import json, os, time, logging
+import json
+import os
+import time
+import logging
 import click
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, select, update, exc
-from tqdm import tqdm
-
-'''
-This might be neat:
-from tqdm.contrib.discord import tqdm
-for i in tqdm(iterable, token='{token}', channel_id='{channel_id}')
-It will add the status bar to discord 
-https://tqdm.github.io/docs/contrib.discord/
-'''
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from database_tables import (
     Base,
-    game_review_summary_table, games_table, game_rating_table,
-    steam_users_table, game_reviews_table, game_review_download_status_table
+    game_review_summary_table, steam_users_table, game_reviews_table, game_review_download_status_table
 )
 from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
 from steam_api_client import SteamAPIClient
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 load_dotenv()
 
@@ -35,12 +29,20 @@ Base.metadata.create_all(engine)
 
 # Sandbox Test
 steam_api_client = SteamAPIClient(api_key=os.environ.get('STEAM_API_KEY'))
-app_list = steam_api_client.get_app_list()
+# app_list = steam_api_client.get_app_list()
 
 
 '''for i,app in enumerate(app_list):
     if app['appid'] == 329070:
         print(f'Found application {app.get("name")} at {i} {app}')
+'''
+
+'''
+This might be neat:
+from tqdm.contrib.discord import tqdm
+for i in tqdm(iterable, token='{token}', channel_id='{channel_id}')
+It will add the status bar to discord 
+https://tqdm.github.io/docs/contrib.discord/
 '''
 
 
@@ -152,9 +154,10 @@ def main(upload_to_db, write_json):
                     conn.commit()
 
         if write_json:
-            with open('game_updated.json', 'w') as json_results:
+            data_dir='data'
+            with open(os.path.join(data_dir,'game_updated.json'), 'w') as json_results:
                 json.dump(games, json_results)
-            with open("game_reviews.json", "a") as json_review_results:
+            with open(os.path.join(data_dir,"game_reviews.json"), "a") as json_review_results:
                 for review in response.get('reviews', []):
                     review['application_id'] = app
                     json.dump(review, json_review_results)

@@ -1,5 +1,3 @@
-import pytest
-from unittest import TestCase
 from steam_api_client import SteamAPIClient
 
 
