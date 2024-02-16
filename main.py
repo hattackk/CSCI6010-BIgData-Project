@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from sqlalchemy import create_engine, select, update, exc
 
 from database_tables import (
-    Base,
+    metadata,
     game_review_summary_table, steam_users_table, game_reviews_table, game_review_download_status_table
 )
 from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
@@ -17,22 +17,18 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 load_dotenv()
 
-# set up the db connection
+# database and api params
 usr = os.environ.get('DB_USER')
 pwd = os.environ.get("DB_PWD")
 db_host = os.environ.get("DB_HOST")
 db_port = os.environ.get("DB_PORT")
 db_db = os.environ.get("DB_DATABASE")
 DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
-engine = create_engine(DATABASE_URI)
-Base.metadata.create_all(engine)
-
-# Sandbox Test
 steam_api_client = SteamAPIClient(api_key=os.environ.get('STEAM_API_KEY'))
-# app_list = steam_api_client.get_app_list()
 
-
-'''for i,app in enumerate(app_list):
+'''
+app_list = steam_api_client.get_app_list()
+for i,app in enumerate(app_list):
     if app['appid'] == 329070:
         print(f'Found application {app.get("name")} at {i} {app}')
 '''
@@ -79,6 +75,8 @@ def build_set_from_json_file(file_path, key):
 @click.option('--upload_to_db', is_flag=True, default=False, help='Upload data to the database')
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 def main(upload_to_db, write_json):
+    engine = create_engine(DATABASE_URI)
+    metadata.create_all(engine)
     games = {}
     should_download_reviews = True
     while should_download_reviews:
