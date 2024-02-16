@@ -54,7 +54,7 @@ game_review_summary_table = Table(
 game_reviews_table = Table(
     'game_reviews', metadata,
     Column('recommendationid', BigInteger, primary_key=True),
-    Column('steamid', BigInteger, ForeignKey('steam_users.steamid')),
+    Column('steamid', BigInteger),
     Column('language', String),
     Column('review', String),
     Column('timestamp_created', Integer),
