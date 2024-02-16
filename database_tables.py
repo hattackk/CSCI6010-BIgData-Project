@@ -4,7 +4,7 @@ from sqlalchemy.orm import declarative_base
 
 
 Base = declarative_base()
-metadata = MetaData()
+metadata = Base.metadata
 
 
 games_table = Table(
@@ -32,7 +32,7 @@ game_rating_table = Table(
     Column('average_2weeks', Integer),
     Column('median_forever', Integer),
     Column('median_2weeks', Integer)
-                   )
+)
 
 game_review_summary_table = Table(
     'game_review_summary', metadata,
