@@ -1,9 +1,12 @@
 import requests
 import warnings
+import logging
 
 from urllib.parse import quote
 import requests.exceptions as req_exc
-from icecream import ic
+
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 
 class SteamAPIClient:
@@ -50,13 +53,13 @@ class SteamAPIClient:
         try:
             response = requests.get(url, params=params)
         except req_exc.ConnectionError as e:
-            print(f"Failed to make request: {e}")
+            logging.error(f"Failed to make request: {e}")
             return None
 
         if response.status_code == 200:
             return response.json()
         else:
-            print(f"Failed to make request. Status code: {response.status_code}")
+            logging.error(f"Failed to make request. Status code: {response.status_code}")
             return None
 
     def get_news_for_app(self, app_id, count=3):
@@ -92,7 +95,7 @@ class SteamAPIClient:
         else:
             return []
 
-    def get_reviews_for_app(self, app_id, filter="all", language="all", day_range=None, cursor="*",
+    def get_reviews_for_app(self, app_id, filter="all", language="all", day_range=365, cursor="*",
                             review_type="all", purchase_type="steam", num_per_page=20, filter_offtopic_activity=None):
         """
         Retrieves reviews for a specific app from the Steam Web API.
@@ -111,11 +114,12 @@ class SteamAPIClient:
         Returns:
             dict or None: The JSON response containing reviews, or None if the request fails.
         """
-        if day_range is None:
+        if day_range > 365 or day_range < 1:
+            warnings.warn(f"Invalid value {day_range} for parameter day_range. Value must be between 1 and 365.")
             day_range = 365
-        if day_range > 365:
-            warnings.warn("day_range limited to 365")
-            day_range = 365
+        if num_per_page > 100 or num_per_page < 1:
+            warnings.warn(f"Invalid value {num_per_page} for parameter num_per_page. Value must be between 1 and 100.")
+            num_per_page = 20
         if cursor != '*':
             cursor = quote(cursor)
         params = {
@@ -126,7 +130,7 @@ class SteamAPIClient:
             'cursor': cursor,
             'review_type': review_type,
             'purchase_type': purchase_type,
-            'num_per_page': min(100, num_per_page),
+            'num_per_page': num_per_page,
             'filter_offtopic_activity': filter_offtopic_activity
         }
         return self._make_request(

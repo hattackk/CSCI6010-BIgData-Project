@@ -1,11 +1,8 @@
-import json, os, time
-
+import json, os, time, logging
 import click
 from dotenv import load_dotenv
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, select, update, exc
 from tqdm import tqdm
-
-from icecream import ic
 
 '''
 This might be neat:
@@ -14,6 +11,7 @@ for i in tqdm(iterable, token='{token}', channel_id='{channel_id}')
 It will add the status bar to discord 
 https://tqdm.github.io/docs/contrib.discord/
 '''
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 from database_tables import (
     Base,
@@ -49,7 +47,7 @@ app_list = steam_api_client.get_app_list()
 def build_set_from_json_file(file_path, key):
     # Check if the file exists
     if not os.path.exists(file_path):
-        print(f"File '{file_path}' does not exist.")
+        logging.error(f"File '{file_path}' does not exist.")
         return None
 
     # Initialize an empty set
@@ -62,7 +60,7 @@ def build_set_from_json_file(file_path, key):
             try:
                 json_obj = json.loads(line.strip())
             except json.JSONDecodeError:
-                print(f"Error decoding JSON from line: {line}")
+                logging.error(f"Error decoding JSON from line: {line}")
                 continue
 
             # Extract the value corresponding to the key
@@ -80,20 +78,21 @@ def build_set_from_json_file(file_path, key):
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 def main(upload_to_db, write_json):
     games = {}
-    i = 0
-    while True and i < 5000:
+    should_download_reviews = True
+    while should_download_reviews:
         stmt = select(game_review_download_status_table.c.game_id).where(
             game_review_download_status_table.c.status == 'not_started'
         ).order_by(game_review_download_status_table.c.game_id)
         with engine.connect() as conn:
             result = conn.execute(stmt).all()
-            if result:
-                app = result[0][0]
-            else:
+            if not result or len(result) == 0:
+                logging.info("No games reviews to download.")
+                should_download_reviews = False
                 break
-            if len(result) == 0:
-                break
-        print(f'{len(result)} games remaining, processing {app}')
+
+            app = result[0][0]
+        
+        logging.info(f'{len(result)} games remaining, processing {app}')
 
         update_stmt = update(game_review_download_status_table).where(
             game_review_download_status_table.c.game_id == app
@@ -121,25 +120,37 @@ def main(upload_to_db, write_json):
         if upload_to_db:
             # here is looks like the only thing be updated is the query_summary
             # with hits the games_review_summary table only
-            with engine.connect() as conn:
-                game, game_review_sum, game_rating = parse_game_json({app: games[app]})
-                add_or_update(game_review_sum, game_review_summary_table, conn)
+            try:
+                with engine.connect() as conn:
+                    game, game_review_sum, game_rating = parse_game_json({app: games[app]})
+                    add_or_update(game_review_sum, game_review_summary_table, conn)
 
-                for review in response.get('reviews', []):
-                    review['application_id'] = app
-                    single_review, single_user = parse_single_game_review(review)
-                    add_or_update([single_user], steam_users_table, conn)
-                    add_or_update([single_review], game_reviews_table, conn)
+                    for review in response.get('reviews', []):
+                        review['application_id'] = app
+                        single_review, single_user = parse_single_game_review(review)
+                        add_or_update([single_user], steam_users_table, conn)
+                        add_or_update([single_review], game_reviews_table, conn)
 
+                    update_stmt = update(game_review_download_status_table).where(
+                        game_review_download_status_table.c.game_id == app
+                    ).values(
+                        status='done'
+                    )
+                    # Execute the update statement
+                    conn.execute(update_stmt)
+                    conn.commit()
+            except exc.DataError as error:
+                logging.error(f'Failed to execute query for app_id {app}\n{error}')
                 update_stmt = update(game_review_download_status_table).where(
-                    game_review_download_status_table.c.game_id == app
+                game_review_download_status_table.c.game_id == app
                 ).values(
-                    status='done'
+                    status='failed'
                 )
-
                 # Execute the update statement
-                conn.execute(update_stmt)
-                conn.commit()
+                with engine.connect() as conn:
+                    conn.execute(update_stmt)
+                    conn.commit()
+
         if write_json:
             with open('game_updated.json', 'w') as json_results:
                 json.dump(games, json_results)
