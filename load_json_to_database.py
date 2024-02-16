@@ -8,7 +8,7 @@ import click
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import create_engine
 from database_tables import (
-    Table, Base,
+    Table, metadata,
     games_table, game_review_summary_table, game_rating_table,
     steam_users_table, game_reviews_table
 )
@@ -171,10 +171,10 @@ def process_review_file(review_file, conn):
 def main(games_file, review_file):
     # Connect to the database
     engine = create_engine(DATABASE_URI)
-    Base.metadata.create_all(engine)
+    metadata.create_all(engine)
     with engine.connect() as conn:
         if not games_file:
-            games_file = 'top100in2weeks.json'
+            games_file = 'games_top_100_2weeks.json'
         # Process the files
         process_game_file(games_file, conn)
 

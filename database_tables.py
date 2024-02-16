@@ -2,10 +2,7 @@ from sqlalchemy import Column, Integer, Float, String, MetaData, Table
 from sqlalchemy import BigInteger, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base
 
-
-Base = declarative_base()
-metadata = Base.metadata
-
+metadata = MetaData()
 
 games_table = Table(
     'games', metadata,
