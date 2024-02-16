@@ -115,8 +115,8 @@ def main(upload_to_db, write_json):
             games[app]['query_summary'] = response.get('query_summary', "None")
         except KeyError:
             games[app] = dict(query_summary=response.get('query_summary', "None"), appid=app)
-        #  games -> top100in2weeks.json
-        #  review -> app_review_top_100.json
+        #  games -> games_top_100_2weeks.json
+        #  review -> app_reviews_top_100_2weeks.json
         if upload_to_db:
             # here is looks like the only thing be updated is the query_summary
             # with hits the games_review_summary table only
@@ -151,15 +151,15 @@ def main(upload_to_db, write_json):
                     conn.execute(update_stmt)
                     conn.commit()
 
-        if write_json:
-            data_dir='data'
-            with open(os.path.join(data_dir,'game_updated.json'), 'w') as json_results:
-                json.dump(games, json_results)
-            with open(os.path.join(data_dir,"game_reviews.json"), "a") as json_review_results:
-                for review in response.get('reviews', []):
-                    review['application_id'] = app
-                    json.dump(review, json_review_results)
-                    json_review_results.write('\n')
+    if write_json:
+        data_dir='data'
+        with open(os.path.join(data_dir,'game_updated.json'), 'w') as json_results:
+            json.dump(games, json_results)
+        with open(os.path.join(data_dir,"game_reviews.json"), "a") as json_review_results:
+            for review in response.get('reviews', []):
+                review['application_id'] = app
+                json.dump(review, json_review_results)
+                json_review_results.write('\n')
 
 
 if __name__ == '__main__':
