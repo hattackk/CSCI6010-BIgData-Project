@@ -1,5 +1,6 @@
 import json
 import os
+import logging
 from typing import List, Dict, Tuple
 
 from dotenv import load_dotenv
@@ -15,6 +16,7 @@ from database_tables import (
 
 from sqlalchemy.inspection import inspect
 
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 # load the .env file and set up variables
 load_dotenv()
 usr = os.environ.get('DB_USER')
@@ -154,7 +156,7 @@ def process_review_file(review_file, conn):
             try:
                 json_obj = json.loads(line.strip())
             except json.JSONDecodeError:
-                print(f"Error decoding JSON from line: {line}")
+                logging.error(f"Error decoding JSON from line: {line}")
                 continue
             single_review, single_user = parse_single_game_review(json_obj)
             game_reviews.append(single_review)
