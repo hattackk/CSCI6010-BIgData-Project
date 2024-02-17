@@ -60,8 +60,8 @@ game_reviews_table = Table(
     Column('timestamp_created', Integer),
     Column('timestamp_updated', Integer),
     Column('voted_up', Boolean),
-    Column('votes_up', Integer),
-    Column('votes_funny', Integer),
+    Column('votes_up', BigInteger),
+    Column('votes_funny', BigInteger),
     Column('weighted_vote_score', Float),
     Column('comment_count', Integer),
     Column('steam_purchase', Boolean),
@@ -72,7 +72,8 @@ game_reviews_table = Table(
     Column('application_id', Integer, ForeignKey('games.game_id')),
     Column('playtime_forever', Integer),
     Column('playtime_last_two_weeks', Integer),
-    Column('playtime_at_review', Integer)
+    Column('playtime_at_review', Integer),
+    Column('last_played', Integer)
 )
 
 
@@ -81,5 +82,4 @@ steam_users_table = Table(
     Column('steamid', BigInteger, primary_key=True),
     Column('num_games_owned', Integer),
     Column('num_reviews', Integer),
-    Column('last_played', Integer)
 )
