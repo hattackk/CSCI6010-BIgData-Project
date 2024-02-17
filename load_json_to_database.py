@@ -146,7 +146,7 @@ def parse_single_game_review(json_obj) -> Tuple[Dict, Dict]:
 
     single_review = dict(
             recommendationid=json_obj.get('recommendationid'),
-            author=user.get('steamid'),
+            steamid=user.get('steamid'),
             language=json_obj.get('language'),
             review=json_obj.get('review'),
             timestamp_created=json_obj.get('timestamp_created'),
@@ -161,16 +161,16 @@ def parse_single_game_review(json_obj) -> Tuple[Dict, Dict]:
             written_during_early_access=json_obj.get('written_during_early_access'),
             hidden_in_steam_china=json_obj.get('hidden_in_steam_china'),
             steam_china_location=json_obj.get('steam_china_location'),
-            application_id=json_obj.get('application_id')
+            application_id=json_obj.get('application_id'),
+            playtime_forever=user.get('playtime_forever'),
+            playtime_last_two_weeks=user.get('playtime_last_two_weeks'),
+            playtime_at_review=user.get('playtime_at_review'),
+            last_played=user.get('last_played'),
         )
     single_user = dict(
             steamid=user.get('steamid'),
             num_games_owned=user.get('num_games_owned'),
             num_reviews=user.get('num_reviews'),
-            playtime_forever=user.get('playtime_forever'),
-            playtime_last_two_weeks=user.get('playtime_last_two_weeks'),
-            playtime_at_review=user.get('playtime_at_review'),
-            last_played=user.get('last_played'),
         )
 
     return single_review, single_user
