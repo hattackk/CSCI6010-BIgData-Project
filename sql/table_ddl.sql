@@ -1,4 +1,4 @@
--- DROP TABLE games, game_rating, game_review_summary, game_reviews, steam_users;
+-- DROP TABLE games, game_rating, game_review_summary, game_reviews, steam_users, game_review_download_status;
 
 -- Creating table 'games'
 CREATE TABLE games (
@@ -40,7 +40,7 @@ CREATE TABLE game_review_summary (
 -- Creating table 'game_reviews'
 CREATE TABLE game_reviews (
     recommendationid BIGINT PRIMARY KEY,
-    author BIGINT,
+    steamid BIGINT,
     language VARCHAR,
     review VARCHAR,
     timestamp_created INT,
@@ -55,7 +55,11 @@ CREATE TABLE game_reviews (
     written_during_early_access BOOLEAN,
     hidden_in_steam_china BOOLEAN,
     steam_china_location VARCHAR,
-    application_id INT REFERENCES games(game_id)
+    application_id INT REFERENCES games(game_id),
+    playtime_forever INT,
+    playtime_last_two_weeks INT,
+    playtime_at_review INT,
+    last_played INT
 );
 
 -- Creating table 'steam_users'
@@ -63,10 +67,19 @@ CREATE TABLE steam_users (
     steamid BIGINT PRIMARY KEY,
     num_games_owned INT,
     num_reviews INT,
-    playtime_forever INT,
-    playtime_last_two_weeks INT,
-    playtime_at_review INT,
-    last_played INT
+    communityvisibilitystate SMALLINT,
+    profilestate SMALLINT,
+    personaname VARCHAR,
+    profileurl VARCHAR,
+    avatar VARCHAR,
+    personastate SMALLINT,
+    realname VARCHAR,
+    primaryclanid BIGINT,
+    timecreated INT,
+    personastateflags SMALLINT,
+    loccountrycode VARCHAR,
+    locstatecode VARCHAR,
+    loccityid INT
 );
 
 -- Creating table 'game_review_download_status
@@ -76,4 +89,4 @@ CREATE TABLE game_review_download_status (
 );
 
 -- Foreign key from 'game_reviews' to 'steam_users'
-ALTER TABLE game_reviews ADD CONSTRAINT fk_game_reviews_author FOREIGN KEY (author) REFERENCES steam_users(steamid);
+ALTER TABLE game_reviews ADD CONSTRAINT fk_game_reviews_steamid FOREIGN KEY (steamid) REFERENCES steam_users(steamid);
