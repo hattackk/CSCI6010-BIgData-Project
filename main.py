@@ -1,8 +1,39 @@
-import json, os, time, logging
+import json
+import os
+import time
+import logging
 import click
 from dotenv import load_dotenv
 from sqlalchemy import create_engine, select, update, exc
-from tqdm import tqdm
+
+from database_tables import (
+    metadata,
+    game_review_summary_table, steam_users_table, game_reviews_table, game_review_download_status_table
+)
+from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
+from steam_api_client import SteamAPIClient
+
+load_dotenv()
+
+# database and api params
+usr = os.environ.get('DB_USER')
+pwd = os.environ.get("DB_PWD")
+db_host = os.environ.get("DB_HOST")
+db_port = os.environ.get("DB_PORT")
+db_db = os.environ.get("DB_DATABASE")
+DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
+steam_api_client = SteamAPIClient(api_key=os.environ.get('STEAM_API_KEY'))
+
+LOG_LEVEL=logging.INFO
+
+logging.basicConfig(level=LOG_LEVEL, format='%(asctime)s - %(levelname)s - %(message)s')
+
+'''
+app_list = steam_api_client.get_app_list()
+for i,app in enumerate(app_list):
+    if app['appid'] == 329070:
+        print(f'Found application {app.get("name")} at {i} {app}')
+'''
 
 '''
 This might be neat:
@@ -10,37 +41,6 @@ from tqdm.contrib.discord import tqdm
 for i in tqdm(iterable, token='{token}', channel_id='{channel_id}')
 It will add the status bar to discord 
 https://tqdm.github.io/docs/contrib.discord/
-'''
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-from database_tables import (
-    Base,
-    game_review_summary_table, games_table, game_rating_table,
-    steam_users_table, game_reviews_table, game_review_download_status_table
-)
-from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
-from steam_api_client import SteamAPIClient
-
-load_dotenv()
-
-# set up the db connection
-usr = os.environ.get('DB_USER')
-pwd = os.environ.get("DB_PWD")
-db_host = os.environ.get("DB_HOST")
-db_port = os.environ.get("DB_PORT")
-db_db = os.environ.get("DB_DATABASE")
-DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
-engine = create_engine(DATABASE_URI)
-Base.metadata.create_all(engine)
-
-# Sandbox Test
-steam_api_client = SteamAPIClient(api_key=os.environ.get('STEAM_API_KEY'))
-app_list = steam_api_client.get_app_list()
-
-
-'''for i,app in enumerate(app_list):
-    if app['appid'] == 329070:
-        print(f'Found application {app.get("name")} at {i} {app}')
 '''
 
 
@@ -77,12 +77,19 @@ def build_set_from_json_file(file_path, key):
 @click.option('--upload_to_db', is_flag=True, default=False, help='Upload data to the database')
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 def main(upload_to_db, write_json):
+    engine = create_engine(DATABASE_URI)
+    if not engine:
+        logging.error(f"Failed to create engine with URI {DATABASE_URI}")
+        return
+    metadata.create_all(engine)
     games = {}
     should_download_reviews = True
     while should_download_reviews:
-        stmt = select(game_review_download_status_table.c.game_id).where(
-            game_review_download_status_table.c.status == 'not_started'
-        ).order_by(game_review_download_status_table.c.game_id)
+        # game_review_download_status_table contains list of all games (in our dataset)
+        # select all the games that have not been started
+        stmt = select(game_review_download_status_table.c.game_id) \
+                .where(game_review_download_status_table.c.status == 'not_started') \
+                .order_by(game_review_download_status_table.c.game_id)
         with engine.connect() as conn:
             result = conn.execute(stmt).all()
             if not result or len(result) == 0:
@@ -115,8 +122,8 @@ def main(upload_to_db, write_json):
             games[app]['query_summary'] = response.get('query_summary', "None")
         except KeyError:
             games[app] = dict(query_summary=response.get('query_summary', "None"), appid=app)
-        #  games -> top100in2weeks.json
-        #  review -> app_review_top_100.json
+        #  games -> games_top_100_2weeks.json
+        #  review -> app_reviews_top_100_2weeks.json
         if upload_to_db:
             # here is looks like the only thing be updated is the query_summary
             # with hits the games_review_summary table only
@@ -151,18 +158,16 @@ def main(upload_to_db, write_json):
                     conn.execute(update_stmt)
                     conn.commit()
 
-        if write_json:
-            with open('game_updated.json', 'w') as json_results:
-                json.dump(games, json_results)
-            with open("game_reviews.json", "a") as json_review_results:
-                for review in response.get('reviews', []):
-                    review['application_id'] = app
-                    json.dump(review, json_review_results)
-                    json_review_results.write('\n')
+    if write_json:
+        data_dir='data'
+        with open(os.path.join(data_dir,'game_updated.json'), 'w') as json_results:
+            json.dump(games, json_results)
+        with open(os.path.join(data_dir,"game_reviews.json"), "a") as json_review_results:
+            for review in response.get('reviews', []):
+                review['application_id'] = app
+                json.dump(review, json_review_results)
+                json_review_results.write('\n')
 
 
 if __name__ == '__main__':
     main()
-
-
-

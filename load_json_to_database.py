@@ -8,7 +8,7 @@ import click
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy import create_engine
 from database_tables import (
-    Table, Base,
+    Table, metadata,
     games_table, game_review_summary_table, game_rating_table,
     steam_users_table, game_reviews_table
 )
@@ -28,21 +28,36 @@ DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
 
 
 def add_or_update(record_list: List[Dict], table: Table, conn):
+    """
+    Inserts new records or updates existing ones in the specified table.
+
+    This function iterates through a list of dictionaries, each representing a record to be added or updated in the
+    specified table. If a record with the same primary key(s) as the new record already exists in the table, the
+    existing record is updated with the new values. Otherwise, a new record is inserted.
+
+    Args:
+        record_list (List[Dict]): A list of dictionaries, where each dictionary contains the data for a record to be
+                                  inserted or updated.
+        table (Table): The SQLAlchemy Table object representing the table to which the records will be inserted or
+                       updated.
+        conn: The SQLAlchemy connection object used to execute the insert or update statements.
+
+    Returns:
+        None
+    """
     for record in record_list:
         primary_keys = [key.name for key in inspect(table).primary_key]
         stmt = insert(table).values(record)
-        # define dict of non-primary keys for updating
-        update_dict = {
-            c.name: c
-            for c in stmt.excluded
-            if not c.primary_key
-        }
+        
+        update_dict = {c.name: stmt.excluded[c.name] for c in table.columns if c.name not in primary_keys}
+        
         update_stmt = stmt.on_conflict_do_update(
             index_elements=primary_keys,
             set_=update_dict,
         )
-
+        
         result = conn.execute(update_stmt)
+        logging.debug(f"Executed upsert for table {table.name}, affected rows: {result.rowcount}")
 
     conn.commit()
 
@@ -102,12 +117,25 @@ def parse_game_json(game_json) -> Tuple[List, List, List]:
     return games, games_review_summary, game_rating
 
 
-def process_game_file(games_file, conn):
-    # load the games_file
-    with open(games_file, 'r') as f:
-        games_file = json.loads(f.read())
+def process_game_file(games_file: str, conn) -> None:
+    """
+    Processes a game file by loading its JSON content and updating the database tables.
 
-    games, games_review_summary, game_rating = parse_game_json(games_file)
+    This function opens a JSON file containing game information, parses it to extract
+    necessary data for three database tables (games, game_review_summary, and game_rating),
+    and then updates these tables in the database using the provided connection.
+
+    Args:
+        games_file (str): The path to the JSON file containing game information.
+        conn: The database connection object used to execute database operations.
+
+    Returns:
+        None
+    """
+    with open(games_file, 'r') as f:
+        games_file_content = json.loads(f.read())
+
+    games, games_review_summary, game_rating = parse_game_json(games_file_content) 
     add_or_update(games, games_table, conn)
     add_or_update(game_rating, game_rating_table, conn)
     add_or_update(games_review_summary, game_review_summary_table, conn)
@@ -118,7 +146,7 @@ def parse_single_game_review(json_obj) -> Tuple[Dict, Dict]:
 
     single_review = dict(
             recommendationid=json_obj.get('recommendationid'),
-            author=user.get('steamid'),
+            steamid=user.get('steamid'),
             language=json_obj.get('language'),
             review=json_obj.get('review'),
             timestamp_created=json_obj.get('timestamp_created'),
@@ -133,16 +161,16 @@ def parse_single_game_review(json_obj) -> Tuple[Dict, Dict]:
             written_during_early_access=json_obj.get('written_during_early_access'),
             hidden_in_steam_china=json_obj.get('hidden_in_steam_china'),
             steam_china_location=json_obj.get('steam_china_location'),
-            application_id=json_obj.get('application_id')
+            application_id=json_obj.get('application_id'),
+            playtime_forever=user.get('playtime_forever'),
+            playtime_last_two_weeks=user.get('playtime_last_two_weeks'),
+            playtime_at_review=user.get('playtime_at_review'),
+            last_played=user.get('last_played'),
         )
     single_user = dict(
             steamid=user.get('steamid'),
             num_games_owned=user.get('num_games_owned'),
             num_reviews=user.get('num_reviews'),
-            playtime_forever=user.get('playtime_forever'),
-            playtime_last_two_weeks=user.get('playtime_last_two_weeks'),
-            playtime_at_review=user.get('playtime_at_review'),
-            last_played=user.get('last_played'),
         )
 
     return single_review, single_user
@@ -171,15 +199,15 @@ def process_review_file(review_file, conn):
 def main(games_file, review_file):
     # Connect to the database
     engine = create_engine(DATABASE_URI)
-    Base.metadata.create_all(engine)
+    metadata.create_all(engine)
     with engine.connect() as conn:
         if not games_file:
-            games_file = 'top100in2weeks.json'
+            games_file = 'data/games_top_100_2weeks.json'
         # Process the files
         process_game_file(games_file, conn)
 
         if not review_file:
-            review_file = 'app_reviews_top_100_2weeks.json'
+            review_file = 'data/app_reviews_top_100_2weeks.json'
         process_review_file(review_file, conn)
 
 
