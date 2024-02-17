@@ -40,7 +40,7 @@ CREATE TABLE game_review_summary (
 -- Creating table 'game_reviews'
 CREATE TABLE game_reviews (
     recommendationid BIGINT PRIMARY KEY,
-    steamid BIGINT PRIMARY KEY,
+    steamid BIGINT,
     language VARCHAR,
     review VARCHAR,
     timestamp_created INT,
