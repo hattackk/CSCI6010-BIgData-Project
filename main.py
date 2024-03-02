@@ -157,6 +157,17 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
                 app_id=app, day_range=365,
                 num_per_page=100
             )
+            # Keep retrying until we get a response.
+            while not response:
+                logger.warn(f'No response recieved for {app}. Backing of for {back_off_timer} seconds.')
+                time.sleep(back_off_timer)
+                response = steam_api_client.get_reviews_for_app(
+                language='english',
+                app_id=app, day_range=365,
+                num_per_page=100,
+                filter="all",
+                cursor=response.get('cursor','*')
+            )
             logger.debug(response)
 
             try:
@@ -176,7 +187,7 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
                         add_or_update(game_review_sum, game_review_summary_table, conn)
                         batch_count = 0
                         seen_cursors = {}
-                        while response.get('cursor','*') not in seen_cursors:
+                        while response and response.get('cursor','*') not in seen_cursors:
                             batch_count+=1
                             logger.info(f"Processing App {app} batch {batch_count}")
                             seen_cursors[response.get('cursor','*')] = True
@@ -194,9 +205,17 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
                             filter="all",
                             cursor=response.get('cursor','*')
                             )
-                            if not response:
-                                logger.warn(f'No response recieved for {app}. Backing of for 1 min')
+                            # Keep Retrying on no response.
+                            while not response:
+                                logger.warn(f'No response recieved for {app}. Backing of for {back_off_timer} seconds.')
                                 time.sleep(back_off_timer)
+                                response = steam_api_client.get_reviews_for_app(
+                                language='english',
+                                app_id=app, day_range=365,
+                                num_per_page=100,
+                                filter="all",
+                                cursor=response.get('cursor','*')
+                                )
 
                             
 
