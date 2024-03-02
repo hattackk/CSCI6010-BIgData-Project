@@ -143,7 +143,7 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
         with engine.connect() as conn:
             result = conn.execute(stmt).all()
             if not result or len(result) == 0:
-                logger.warn("No games reviews to download.")
+                logger.warning("No games reviews to download.")
                 should_download_reviews = False
                 break
             conn.commit()
@@ -159,7 +159,7 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
             )
             # Keep retrying until we get a response.
             while not response:
-                logger.warn(f'No response recieved for {app}. Backing of for {back_off_timer} seconds.')
+                logger.warning(f'No response recieved for {app}. Backing of for {back_off_timer} seconds.')
                 time.sleep(back_off_timer)
                 response = steam_api_client.get_reviews_for_app(
                 language='english',
@@ -207,7 +207,7 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
                             )
                             # Keep Retrying on no response.
                             while not response:
-                                logger.warn(f'No response recieved for {app}. Backing of for {back_off_timer} seconds.')
+                                logger.warning(f'No response recieved for {app}. Backing of for {back_off_timer} seconds.')
                                 time.sleep(back_off_timer)
                                 response = steam_api_client.get_reviews_for_app(
                                 language='english',
@@ -239,7 +239,7 @@ def main(upload_to_db, write_json, log_level, back_off_timer):
                         conn.execute(update_stmt)
                         conn.commit()
             else: # no operation given so we must be testing set the application back to not_started. We don't want to have an invalid state in the database because a result will never be uploaded back.
-                logger.warn("No option given reviews will not be saved.")
+                logger.warning("No option given reviews will not be saved.")
                 logger.debug(f"Resetting status of {app}")
                 update_stmt = update(game_review_download_status_table).where(
                     game_review_download_status_table.c.game_id == app
