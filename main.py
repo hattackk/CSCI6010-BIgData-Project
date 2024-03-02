@@ -119,10 +119,11 @@ def configure_logging(log_level):
 @click.option('--upload_to_db', is_flag=True, default=False, help='Upload data to the database')
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 @click.option('--log_level', is_flag=False, default="INFO", help='Sets log level')
+@click.option('--back_off_timer', is_flag=False, default=60, help='Seconds to sleep if response fails.')
 
 
 
-def main(upload_to_db, write_json, log_level):
+def main(upload_to_db, write_json, log_level, back_off_timer):
     configure_logging(log_level)
     logger.debug(DATABASE_URI)
     engine = create_engine(DATABASE_URI)
@@ -164,6 +165,8 @@ def main(upload_to_db, write_json, log_level):
                 games[app] = dict(query_summary=response.get('query_summary', "None"), appid=app)
             #  games -> games_top_100_2weeks.json
             #  review -> app_reviews_top_100_2weeks.json
+                
+            logger.debug(f"Back off timer : {back_off_timer}")
             if upload_to_db:
                 # here is looks like the only thing be updated is the query_summary
                 # with hits the games_review_summary table only
@@ -183,6 +186,7 @@ def main(upload_to_db, write_json, log_level):
                                 add_or_update([single_user], steam_users_table, conn)
                                 add_or_update([single_review], game_reviews_table, conn)
                             
+                            time.sleep(0.5)
                             response = steam_api_client.get_reviews_for_app(
                             language='english',
                             app_id=app, day_range=365,
@@ -190,6 +194,10 @@ def main(upload_to_db, write_json, log_level):
                             filter="all",
                             cursor=response.get('cursor','*')
                             )
+                            if not response:
+                                logger.warn(f'No response recieved for {app}. Backing of for 1 min')
+                                time.sleep(back_off_timer)
+
                             
 
                         update_stmt = update(game_review_download_status_table).where(
@@ -212,6 +220,7 @@ def main(upload_to_db, write_json, log_level):
                         conn.execute(update_stmt)
                         conn.commit()
             else: # no operation given so we must be testing set the application back to not_started. We don't want to have an invalid state in the database because a result will never be uploaded back.
+                logger.warn("No option given reviews will not be saved.")
                 logger.debug(f"Resetting status of {app}")
                 update_stmt = update(game_review_download_status_table).where(
                     game_review_download_status_table.c.game_id == app
