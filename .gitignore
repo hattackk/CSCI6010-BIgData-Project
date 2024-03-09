@@ -3,3 +3,4 @@ venv/
 .venv/
 
 .DS_Store
+hugging_face/bert-tiny-finetuned-sms-spam-detection/
