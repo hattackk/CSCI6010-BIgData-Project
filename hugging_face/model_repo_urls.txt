@@ -1,0 +1,1 @@
+https://huggingface.co/mrm8488/bert-tiny-finetuned-sms-spam-detection
