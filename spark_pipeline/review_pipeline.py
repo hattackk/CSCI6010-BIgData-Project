@@ -5,34 +5,9 @@ import generate_fake_review
 from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType
 from pyspark import SparkFiles
-
-# import json
-# import os
-# import time
-# import logging
-# import click
-# from dotenv import load_dotenv
-# from sqlalchemy import create_engine, select, update, exc
-
-# from database_tables import (
-#     metadata,
-#     game_review_summary_table, steam_users_table, game_reviews_table, game_review_download_status_table
-# )
-# from load_json_to_database import parse_single_game_review, parse_game_json, add_or_update
-# from steam_api_client import SteamAPIClient
-
-# load_dotenv()
-# logging.basicConfig(level="INFO", format='%(asctime)s - %(levelname)s - %(message)s')
-# logger = logging.getLogger(__name__)
-
-# # database and api params
-# usr = os.environ.get('DB_USER')
-# pwd = os.environ.get("DB_PWD")
-# db_host = os.environ.get("DB_HOST")
-# db_port = os.environ.get("DB_PORT")
-# db_db = os.environ.get("DB_DATABASE")
-# DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
-
+import psycopg2
+import pandas as pd
+import os
 
 # Define schema for game_reviews table
 schema = StructType([
@@ -65,18 +40,64 @@ test_data = [generate_fake_review.generate_review() for _ in range(5)]
 # Initialize SparkSession
 spark = SparkSession.builder \
     .appName("GameReviewsPipeline") \
+    .config("spark.jars", "/postgresql-42.7.2.jar") \
+    .config("spark.executor.extraClassPath", "/postgresql-42.7.2.jar") \
+    .config("spark.driver.extraClassPath", "/postgresql-42.7.2.jar") \
     .getOrCreate() 
 spark.sparkContext.addFile("/spam_filter_udf.py")
+spark.sparkContext.addFile("/postgresql-42.7.2.jar")
 
-# Load test data into DataFrame
-df = spark.createDataFrame(test_data, schema=schema)
+# Database connection parameters
+usr = os.environ.get('DB_USER')
+if usr is None:
+    raise Exception("Environment variable 'DB_USER' not found. Please set it and try again.")
 
-df.show()
+pwd = os.environ.get("DB_PWD")
+if pwd is None:
+    raise Exception("Environment variable 'DB_PWD' not found. Please set it and try again.")
+
+db_host = os.environ.get("DB_HOST")
+if db_host is None:
+    raise Exception("Environment variable 'DB_HOST' not found. Please set it and try again.")
+
+db_port = os.environ.get("DB_PORT")
+if db_port is None:
+    raise Exception("Environment variable 'DB_PORT' not found. Please set it and try again.")
+
+db_db = os.environ.get("DB_DATABASE")
+if db_db is None:
+    raise Exception("Environment variable 'DB_DATABASE' not found. Please set it and try again.")
+
+# Connect to the PostgreSQL database
+conn = psycopg2.connect(
+    dbname=db_db,
+    user=usr,
+    password=pwd,
+    host=db_host,
+    port=db_port
+)
+
+# Create a cursor object
+cur = conn.cursor()
+
+# Execute a query
+cur.execute("SELECT * FROM game_reviews")
+
+# Fetch all rows from the database
+rows = cur.fetchall()
+
+# Convert to pandas DataFrame
+df = pd.DataFrame(rows, columns=[desc[0] for desc in cur.description])
+
+# Convert pandas DataFrame to Spark DataFrame
+sdf = spark.createDataFrame(df)
+
+sdf.show()
 
 spam_udf = udf(spam_filter,IntegerType())
+processed_df = sdf.withColumn("is_spam", spam_udf(sdf["review"]))
 
-processed_df = df.withColumn("is_spam", spam_udf(df["review"]))
-
-processed_df.show()
+processed_df.select("review", "is_spam") \
+    .show(truncate=False)
 
 spark.stop()
