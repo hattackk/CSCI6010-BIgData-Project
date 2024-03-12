@@ -12,6 +12,9 @@ RUN apt-get update -y && apt-get install -y python3-pip
 COPY requirements.txt /requirements.txt
 RUN pip install -r /requirements.txt
 
+COPY postgresql-42.7.2.jar /postgresql-42.7.2.jar
+RUN chmod +r /postgresql-42.7.2.jar
+
 # copy huggingface models
 COPY ./hugging_face/git-clone.sh /git-clone.sh
 COPY ./hugging_face/model_repo_urls.txt /model_repo_urls.txt
