@@ -5,7 +5,7 @@ from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType
 
 # Load tokenizer and model
-model_name = "./hugging_face/bert-tiny-finetuned-sms-spam-detection/"
+model_name = "/bert-tiny-finetuned-sms-spam-detection/"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 
