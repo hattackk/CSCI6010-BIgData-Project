@@ -22,8 +22,6 @@ COPY ./hugging_face/model_repo_urls.txt /model_repo_urls.txt
 RUN apt-get install -y git && apt-get install -y git-lfs && git lfs install
 RUN /bin/bash /git-clone.sh
 
-# Copy your script and model into the container
 COPY *.py / 
 
-# Set the command to run your script
 CMD ["spark-submit", "/review_pipeline.py"]
