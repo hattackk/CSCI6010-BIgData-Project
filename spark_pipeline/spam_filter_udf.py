@@ -6,6 +6,7 @@ from pyspark.sql.types import IntegerType
 
 # Load tokenizer and model
 model_name = "/bert-tiny-finetuned-sms-spam-detection/"
+model_name = "mrm8488/bert-tiny-finetuned-sms-spam-detection"
 tokenizer = AutoTokenizer.from_pretrained(model_name)
 model = AutoModelForSequenceClassification.from_pretrained(model_name)
 

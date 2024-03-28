@@ -1,21 +1,22 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.types import IntegerType
-from spam_filter_udf import spam_filter
+from .spam_filter_udf import spam_filter
+from .sentiment_analysis_udf import sentiment_analysis
 from pyspark.sql.functions import udf
-from pyspark.sql.types import IntegerType
+from pyspark.sql.types import IntegerType, FloatType
 import psycopg2
 import pandas as pd
+from tqdm import tqdm
 import os
-
 
 # Initialize SparkSession
 spark = SparkSession.builder \
     .appName("GameReviewsPipeline") \
     .config("spark.jars", "/postgresql-42.7.2.jar") \
-    .config("spark.executor.extraClassPath", "/postgresql-42.7.2.jar") \
+    .config("spark.executor.extraClassPath", "postgresql-42.7.2.jar") \
     .config("spark.driver.extraClassPath", "/postgresql-42.7.2.jar") \
     .getOrCreate() 
 spark.sparkContext.addFile("/spam_filter_udf.py")
+spark.sparkContext.addFile("/sentiment_analysis_udf.py")
 spark.sparkContext.addFile("/postgresql-42.7.2.jar")
 
 # Database connection parameters
@@ -47,24 +48,39 @@ conn = psycopg2.connect(
     host=db_host,
     port=db_port
 )
-
+properties = {
+    "user": usr,
+    "password": pwd,
+    "driver": "org.postgresql.Driver"
+}
+DATABASE_URI = "jdbc:postgresql://{db_host}:{db_port}/{db_db}"
 
 cur = conn.cursor()
-cur.execute("SELECT * FROM game_reviews")
-rows = cur.fetchall()
+cur.execute("SELECT count(1) FROM game_reviews")
+total_rows = cur.fetchall()[0][0]
+chunk_size = 100
 
-# Convert to pandas DataFrame
-df = pd.DataFrame(rows, columns=[desc[0] for desc in cur.description])
+# define the spam filter
+spam_udf = udf(spam_filter, IntegerType())
+# define the sentiment analysis
+sentiment_analysis_udf = udf(sentiment_analysis, FloatType())
 
-# Convert pandas DataFrame to Spark DataFrame
-sdf = spark.createDataFrame(df)
+# since we dont have a spark cluster, this will chunk the data
+# into 1000 line segments which is more manageable locally
+for offset in tqdm(range(0, total_rows, chunk_size)):
+    query = f"(SELECT recommendationid, review FROM game_reviews LIMIT {chunk_size} OFFSET {offset}) AS chunk"
+    chunk_df = spark.read.jdbc(url=DATABASE_URI, table=query, properties=properties)
+    processed_df = chunk_df.withColumn("is_spam", spam_udf(chunk_df["review"]))
+    sdf_with_sa = processed_df.withColumn("sentiment_score", sentiment_analysis_udf(processed_df["review"]))
+    sdf_with_sa = sdf_with_sa.drop(sdf_with_sa.review)
+    results = sdf_with_sa.collect()
+    for row in results:
+        cur.execute("""
+            UPDATE game_reviews
+            SET is_spam = %s, sentiment_score = %s
+            WHERE recommendationid = %s
+            """, (row.is_spam, row.sentiment_score, row.recommendationid))
+    conn.commit()
 
-sdf.show()
-
-spam_udf = udf(spam_filter,IntegerType())
-processed_df = sdf.withColumn("is_spam", spam_udf(sdf["review"]))
-
-processed_df.select("review", "is_spam") \
-    .show(truncate=80, n=100)
 
 spark.stop()
