@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
-from spam_filter_udf import spam_filter
-from sentiment_analysis_udf import sentiment_analysis
+from .spam_filter_udf import spam_filter
+from .sentiment_analysis_udf import sentiment_analysis
 from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType, FloatType
 import psycopg2
