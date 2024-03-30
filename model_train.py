@@ -106,8 +106,8 @@ class RecommenderModel:
         svd = TruncatedSVD(n_components=n_components, random_state=42)
 
         player_matrix = svd.fit_transform(user_game_matrix_csr)
-        user_index_mapping = {steamid: index for index, steamid in enumerate(df_reviews['steamid'].cat.categories)}
-        game_index_mapping = {index: game_id for index, game_id in enumerate(df_reviews['game_id'].cat.categories)}
+        user_index_mapping = {steamid: index for index, steamid in enumerate(df['steamid'].cat.categories)}
+        game_index_mapping = {index: game_id for index, game_id in enumerate(df['game_id'].cat.categories)}
         self.player_matrix = player_matrix
         self.user_game_matrix_csr = user_game_matrix_csr
         self.user_index_mapping = user_index_mapping
