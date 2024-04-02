@@ -1,6 +1,6 @@
 from pyspark.sql import SparkSession
-from .spam_filter_udf import spam_filter
-from .sentiment_analysis_udf import sentiment_analysis
+from spam_filter_udf import spam_filter
+from sentiment_analysis_udf import sentiment_analysis
 from pyspark.sql.functions import udf
 from pyspark.sql.types import IntegerType, FloatType
 import psycopg2
@@ -53,7 +53,7 @@ properties = {
     "password": pwd,
     "driver": "org.postgresql.Driver"
 }
-DATABASE_URI = "jdbc:postgresql://{db_host}:{db_port}/{db_db}"
+DATABASE_URI = f"jdbc:postgresql://{db_host}:{db_port}/{db_db}"
 
 cur = conn.cursor()
 cur.execute("SELECT count(1) FROM game_reviews")
