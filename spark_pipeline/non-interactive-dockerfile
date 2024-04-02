@@ -1,0 +1,27 @@
+# Start from the Spark base image
+FROM docker.io/bitnami/spark:3.5
+
+# Install Python and pip
+USER root
+RUN cd /
+RUN mkdir -p /var/lib/apt/lists/partial
+RUN apt-get update -y && apt-get clean
+RUN apt-get update -y && apt-get install -y python3-pip
+
+# Install Python dependencies
+COPY requirements.txt /requirements.txt
+RUN pip install -r /requirements.txt
+
+COPY postgresql-42.7.2.jar /postgresql-42.7.2.jar
+RUN chmod +r /postgresql-42.7.2.jar
+
+# copy huggingface models
+COPY ./hugging_face/git-clone.sh /git-clone.sh
+COPY ./hugging_face/model_repo_urls.txt /model_repo_urls.txt
+
+RUN apt-get install -y git && apt-get install -y git-lfs && git lfs install
+RUN /bin/bash /git-clone.sh
+
+COPY *.py / 
+
+CMD ["spark-submit", "/review_pipeline.py"]
