@@ -1,8 +1,10 @@
 *.pyc
 venv/
-.venv/
+./*/venv/
 
 .DS_Store
 hugging_face/bert-tiny-finetuned-sms-spam-detection/
 spark_pipeline/.ipynb_checkpoints/
 spark_pipeline/spark_events/
+
+*.pkl   
