@@ -43,12 +43,17 @@ if __name__ == '__main__':
 
     cur = conn.cursor()
 
-    cur.execute("SELECT steamid, application_id, voted_up FROM game_reviews")
+    cur.execute(
+        """SELECT steamid, application_id, voted_up 
+        FROM game_reviews 
+        """
+    )
     rows = cur.fetchall()
     # Convert to pandas DataFrame
     df_reviews = pd.DataFrame(rows, columns=[desc[0] for desc in cur.description])
     df_reviews = df_reviews.astype({'voted_up': int})
     df_reviews.loc[df_reviews['voted_up'] == 0, 'voted_up'] = -1
+
 
     ### Game Similarities
     nc = ['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price']
@@ -61,12 +66,18 @@ if __name__ == '__main__':
     on games.game_id = game_rating.game_id 
     join game_review_summary 
     on game_review_summary.game_id = games.game_id 
-    WHERE games.game_id IN (SELECT application_id FROM game_reviews)
+    join app_type
+    on app_type.app_id = games.game_id
     """
     cur.execute(query)
     rows = cur.fetchall()
     df_games = pd.DataFrame(rows, columns=[desc[0] for desc in cur.description])
     df_games = df_games.loc[:, ~df_games.columns.duplicated()].copy()
+
+    # make sure both dfs have same games
+    df_reviews = df_reviews.query('application_id in @df_games.game_id.unique()')
+    df_games = df_games.query('game_id in @df_reviews.application_id.unique()')
+    df_reviews = df_reviews.query('application_id in @df_games.game_id.unique()')
 
     model = RecommenderModel()
     model.train_game_similarities(df_games)
