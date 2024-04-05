@@ -123,42 +123,34 @@ class RecommenderModel:
     def train_game_similarities(
             self,
             df,
-            numerical_cols=None,
-            categorical_cols=None,
-            multi_label_columns=None
+            numerical_cols=['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price'],
+            categorical_cols=['review_score_desc', 'developer', 'publisher', 'owners'],
+            multi_label_cols=['categories', 'genres']
     ):
-        if numerical_cols is None:
-            numerical_cols = ['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price']
-        if categorical_cols is None:
-            categorical_cols = ['review_score_desc', 'developer', 'publisher', 'owners']
-        if multi_label_columns is None:
-            multi_label_cols = ['categories', 'genres']
-
-        numerical_transformer = Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='mean')),
-            ('scaler', StandardScaler())
-        ])
-
-        categorical_transformer = Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
-        ])
-
-        multilabel_transformer = Pipeline(steps=[
-            ('onehot', MultiHotEncoder())
-        ])
-
-
-        # Combine the numerical and categorical pipelines
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', numerical_transformer, numerical_cols),
-                ('cat', categorical_transformer, categorical_cols),
-                ('multi', multilabel_transformer, multi_label_cols)
+        transformers=[]
+        
+        if numerical_cols is not None and numerical_cols is not []:
+            numerical_transformer = Pipeline(steps=[
+                ('imputer', SimpleImputer(strategy='mean')),
+                ('scaler', StandardScaler())
             ])
+            transformers.append(('num', numerical_transformer, numerical_cols))
 
-        # Apply the transformations to the games DataFrame
+        if categorical_cols is not None and categorical_cols is not []:
+            categorical_transformer = Pipeline(steps=[
+                ('imputer', SimpleImputer(strategy='most_frequent')),
+                ('onehot', OneHotEncoder(handle_unknown='ignore'))
+            ])
+            transformers.append(('cat', categorical_transformer, categorical_cols))
 
+        if multi_label_cols is not None and multi_label_cols is not []:
+            multilabel_transformer = Pipeline(steps=[
+                ('onehot', MultiHotEncoder())
+            ])
+            transformers.append(('multi', multilabel_transformer, multi_label_cols))
+
+        # Apply preprocessing pipelines
+        preprocessor = ColumnTransformer(transformers)
         game_features = preprocessor.fit_transform(df)
         game_nn_model = NearestNeighbors(n_neighbors=5, algorithm='auto').fit(game_features)
         self.game_nn_model = game_nn_model
