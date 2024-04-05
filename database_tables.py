@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Float, String, MetaData, Table
+from sqlalchemy import Column, Integer, Float, String, MetaData, Table, ARRAY
 from sqlalchemy import BigInteger, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base
 
@@ -82,4 +82,13 @@ steam_users_table = Table(
     Column('steamid', BigInteger, primary_key=True),
     Column('num_games_owned', Integer),
     Column('num_reviews', Integer),
+)
+
+app_type_table = Table(
+    'app_type', metadata,
+    Column('app_id', BigInteger, primary_key=True),
+    Column('genres', ARRAY(String)),
+    Column('categories', ARRAY(String)),
+    Column('recommendations', BigInteger),
+    Column('metacritic', Integer)
 )

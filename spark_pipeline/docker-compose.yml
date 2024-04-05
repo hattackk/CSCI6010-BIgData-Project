@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  review_pipeline:
+    container_name: docjupyter
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: docjupyter:latest
+    ports:
+      - 4041:4041 
+    env_file:
+      - .env
+    environment:
+      - DB_USER=${DB_USER}
+      - DB_PWD=${DB_PWD}
+      - DB_HOST=${DB_HOST}
+      - DB_PORT=${DB_PORT}
+      - DB_DATABASE=${DB_DATABASE}
+    volumes:
+      - ./:/home/ecu/app
+      - ./spark_events:/home/ecu/app/events
