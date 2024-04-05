@@ -5,6 +5,7 @@ from sqlalchemy import Column, Integer, Float, String, MetaData, Table, text
 from sqlalchemy import BigInteger, ForeignKey, Boolean
 from sqlalchemy.orm import declarative_base
 from sqlalchemy import create_engine, select, update, exc
+from sqlalchemy.dialects.postgresql import ARRAY
 
 from dotenv import load_dotenv
 import pandas as pd
@@ -91,6 +92,15 @@ steam_users_table = Table(
     Column('num_reviews', Integer),
 )
 
+app_type_table = Table(
+    'app_type', metadata,
+    Column('app_id', BigInteger, primary_key=True), # == steamid from other tables
+    Column('genres', ARRAY(String)),
+    Column('categories', ARRAY(String)),
+    Column('recommendations', BigInteger),
+    Column('metacritic', Integer),
+)
+
 # database params
 load_dotenv()
 usr = os.environ.get('DB_USER')
@@ -146,7 +156,7 @@ def save_dataframe_as_pickle(df, table_name):
         print(f"No data to save for {table_name}")
 
 def get_table_cache_location(table_name):
-    return f'./cache/${table_name}.pkl'
+    return f'./cache/{table_name}.pkl'
 
 def is_table_cached(table_name):
     return os.path.exists(get_table_cache_location(table_name))
@@ -163,7 +173,8 @@ def main():
         game_rating_table,
         game_review_summary_table,
         game_reviews_table,
-        steam_users_table
+        steam_users_table,
+        app_type_table
     ]
 
     for table in tables:
