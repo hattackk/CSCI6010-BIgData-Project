@@ -56,12 +56,6 @@ class ModelTrainer():
         game_reviews_df = game_reviews_df.query('application_id in @game_df.game_id.unique()')
         game_df = game_df.query('game_id in @game_reviews_df.application_id.unique()')
         game_reviews_df = game_reviews_df.query('application_id in @game_df.game_id.unique()')
-        # Print unique game_id values from game_df
-        print("Unique game_id in game_df:", len(game_df['game_id'].unique()))
-
-        # Print unique application_id values from game_reviews_df
-        print("Unique application_id in game_reviews_df:", len(game_reviews_df['application_id'].unique()))
-
 
         # add types cols to games
         game_df = pd.merge(game_df, game_rating, on='game_id', how='left')
@@ -120,7 +114,7 @@ class ModelTrainer():
         all_defaults = self.all_numerical_cols + self.all_categorical_cols + self.all_multi_label_cols
         not_selected = [col for col in all_defaults if col not in all_selected]
         train_game_df = self.game_df.copy()
-        # train_game_df=train_game_df.drop(columns=not_selected)
+        train_game_df=train_game_df.drop(columns=not_selected)
 
         train_reviews_df = self.game_reviews_df
 
@@ -133,7 +127,7 @@ class ModelTrainer():
             test_indices = test_df.index
             train_reviews_df = train_reviews_df.drop(test_indices)
             self.test_users=test_df
-        model.train_game_similarities(train_game_df, numerical_cols=['review_score'], categorical_cols=['review_score_desc'], multi_label_cols=self.multi_label_cols)
+        model.train_game_similarities(train_game_df, numerical_cols=self.numerical_cols, categorical_cols=self.categorical_cols, multi_label_cols=self.multi_label_cols)
         model.train_user_similaries(train_reviews_df)
         model.save(self.model_name)
         self.model = RecommenderModel.load(self.model_name)
@@ -155,6 +149,7 @@ class ModelTrainer():
             return row['application_id'] in row['result']
         self.test_users['got_expected'] = self.test_users.apply(check_expected, axis=1)   
         print(self.test_users.head(30))
+        return self.test_users
 
 
         
