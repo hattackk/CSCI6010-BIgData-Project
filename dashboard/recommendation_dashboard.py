@@ -151,6 +151,28 @@ def line_chart(df, dimensions, labels, title='Line Chart'):
     # Display the chart in Streamlit
     st.plotly_chart(fig)
 
+def bar_chart(data, category_col, value_col, chart_title='Bar Chart', x_label='Category', y_label='Value', rotation_angle=90, figsize=(10, 6)):
+    """
+    Plots a bar chart with bars colored red for negative values and green for positive values.
+
+    :param data: pandas DataFrame containing the data.
+    :param category_col: String name of the column containing the category names.
+    :param value_col: String name of the column containing the numerical values.
+    :param chart_title: Title of the chart (default 'Bar Chart').
+    :param x_label: Label for the x-axis (default 'Category').
+    :param y_label: Label for the y-axis (default 'Value').
+    :param rotation_angle: Rotation angle for x-axis labels (default 90).
+    :param figsize: Tuple for the figure size (default (10, 6)).
+    """
+    plt.figure(figsize=figsize)
+    bar_colors = ['green' if x > 0 else 'red' for x in data[value_col]]
+    plt.bar(data[category_col], data[value_col], color=bar_colors)
+    plt.xlabel(x_label)
+    plt.ylabel(y_label)
+    plt.title(chart_title)
+    plt.xticks(rotation=rotation_angle)
+    st.pyplot(plt)
+
 def load_dataframe_from_pickle(file_path):
     try:
         df = pd.read_pickle(file_path)
@@ -179,6 +201,7 @@ game_rating_df=dataframes['game_rating']
 games_df=dataframes['games']
 types_df=dataframes['app_type']
 games_df = pd.merge(games_df, types_df, left_on='game_id', right_on='app_id', how='left')
+game_reviews_df = pd.merge(game_reviews_df, games_df, left_on='application_id', right_on='game_id', how='left')
 
 ## BEGIN DASHBOARD LOGIC ##
 st.set_page_config(
@@ -190,7 +213,7 @@ st.set_page_config(
 # dashboard title
 st.title("CSCI 6010 Steam Analytics Dashboard")
 
-users=users_df[users_df['steamid'].isin(game_reviews_df['steamid'].unique())].head(100) # only get users that have reviews
+users=users_df[users_df['steamid'].isin(game_reviews_df['steamid'].unique())].sort_values(by='num_reviews', ascending=False).head(100) # only get users that have reviews
 user_filter = st.selectbox("Select a user.", users)
 
 user=users_df[users_df['steamid']==user_filter]
@@ -198,6 +221,19 @@ user
 
 def userDisplay(user_filter):
     user_reviews=game_reviews_df[game_reviews_df['steamid']==user_filter]
+    # Explode 'genres' into separate rows
+    genres_exploded = user_reviews[['genres', 'sentiment_score']].explode('genres')
+
+    # Explode 'categories' into separate rows
+    categories_exploded = user_reviews[['categories', 'sentiment_score']].explode('categories')
+
+    # Concatenate the exploded DataFrames
+    combined_exploded = pd.concat([genres_exploded, categories_exploded.rename(columns={'categories': 'genres'})])
+
+    # Group by each item in 'genres' (which now includes categories) and calculate the average sentiment score
+    avg_sentiment = combined_exploded.groupby('genres')['sentiment_score'].mean().reset_index()
+
+    bar_chart(avg_sentiment, 'genres', 'sentiment_score', chart_title='Average Sentiment Score by Genre/Category', x_label='Genres/Categories', y_label='Average Sentiment Score')
     user_review_content = user_reviews['review']
 
     # Combine all reviews into one large text
@@ -210,7 +246,7 @@ def userDisplay(user_filter):
     user1_values = [3, 5, 2, 4, 7]
     user2_values = [4, 3, 6, 5, 8]
 
-    spider_chart("User Comparison", categories, [user1_values, user2_values])
+    spider_chart("User Comparison", categories, [user1_values])
 
     col1, col2 = st.columns(2)
     with col1:
@@ -232,8 +268,13 @@ most_similar_users = users[users_df['steamid'] != user_filter].sample(10)
 user_reviews = game_reviews_df[game_reviews_df['steamid'].isin(most_similar_users['steamid'])]
 dimensions = ['votes_up', 'votes_funny', 'weighted_vote_score', 'comment_count']
 labels = {'votes_up': 'Votes Up', 'votes_funny': 'Votes Funny', 'weighted_vote_score': 'Weighted Vote Score', 'comment_count': 'Comment Count'}
+pivot_table = user_reviews.pivot_table(values='sentiment_score', index='recommendationid', columns='steamid', fill_value=0)
 
-parallel_coordinates(user_reviews, dimensions, labels, title='Game Reviews - Parallel Coordinates Plot')
+c1,c2 = st.columns(2)
+with c1:
+    heatmap(pivot_table, title="User Sentiment per game.")
+with c2:
+    parallel_coordinates(user_reviews, dimensions, labels, title='Game Reviews - Parallel Coordinates Plot')
 
 with st.form(key='similar_users'):
     selected_steamid = st.radio("Top 10 most similar users:", most_similar_users['steamid'])
