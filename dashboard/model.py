@@ -51,6 +51,7 @@ class MultiHotEncoder(BaseEstimator, TransformerMixin):
         self.columns = X.columns.to_list()
 
         for column_name in X:
+            print(column_name)
             binarizer = self.binarizer_creator().fit(X[column_name])
             self.binarizers.append(binarizer)
             self.classes_.append(binarizer.classes_)  # noqa
