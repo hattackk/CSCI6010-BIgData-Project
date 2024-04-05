@@ -137,3 +137,16 @@ class SteamAPIClient:
             self.reviews_base_url, interface="appreviews",
             method=str(app_id), version=None, params=params
         )
+    
+    def get_app_details(self, app_id):
+        """
+        Retrieves details for a specific app from the Steam Web API.
+
+        Parameters:
+            app_id (int): The AppID of the game or application.
+
+        Returns:
+            dict or None: The JSON response containing app details, or None if the request fails.
+        """
+        params = {'appids': app_id}
+        return self._make_request('https://store.steampowered.com/api/appdetails', params=params)
