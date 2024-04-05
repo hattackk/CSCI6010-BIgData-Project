@@ -7,6 +7,10 @@ from wordcloud import WordCloud
 import matplotlib.pyplot as plt
 import networkx as nx
 
+from model import RecommenderModel
+from numpy.random import randint
+from tabulate import tabulate
+
 from faker import Faker
 import random
 
@@ -147,7 +151,6 @@ def line_chart(df, dimensions, labels, title='Line Chart'):
     # Display the chart in Streamlit
     st.plotly_chart(fig)
 
-
 def load_dataframe_from_pickle(file_path):
     try:
         df = pd.read_pickle(file_path)
@@ -159,8 +162,7 @@ def load_dataframe_from_pickle(file_path):
         print(f"Error loading file {file_path}: {e}")
         return None
 
-# Assuming you have a list of table names
-table_names = ["games", "game_rating", "game_review_summary", "game_reviews", "steam_users"]
+table_names = ["games", "game_rating", "game_review_summary", "game_reviews", "steam_users", "app_type"]
 
 dataframes = {}
 for table_name in table_names:
@@ -169,15 +171,14 @@ for table_name in table_names:
     if df is not None:
         dataframes[table_name] = df
 
-# DataFrames are now populated with random data generated using Faker
-# games_df, game_rating_df, game_review_summary_df, game_reviews_df, steam_users_df
-
 users_df=dataframes['steam_users']
 game_reviews_df=dataframes['game_reviews']
 print(f"total reviews == {len(game_reviews_df)}")
 game_review_summary_df=dataframes['game_review_summary']
 game_rating_df=dataframes['game_rating']
 games_df=dataframes['games']
+types_df=dataframes['app_type']
+games_df = pd.merge(games_df, types_df, left_on='game_id', right_on='app_id', how='left')
 
 ## BEGIN DASHBOARD LOGIC ##
 st.set_page_config(
@@ -235,16 +236,27 @@ labels = {'votes_up': 'Votes Up', 'votes_funny': 'Votes Funny', 'weighted_vote_s
 parallel_coordinates(user_reviews, dimensions, labels, title='Game Reviews - Parallel Coordinates Plot')
 
 with st.form(key='similar_users'):
-    # Use a selectbox for tab selection
     selected_steamid = st.radio("Top 10 most similar users:", most_similar_users['steamid'])
     button=st.form_submit_button('Inspect User.')
 
 if button:
     with st.spinner('Analyzing user'):
-        # Show content based on selected steamid
         user_info = users_df[users_df['steamid'] == selected_steamid]
         st.success('Analysis Ready.')
 
     st.write(f"SteamID: {selected_steamid} (User Similarity Rank {most_similar_users[most_similar_users['steamid']==selected_steamid].index})")
     userDisplay(selected_steamid)
 
+
+#  Streamlit form types:
+# Radio Buttons (st.radio): Good for selecting one option from a small set.
+# Dropdown Menu (st.selectbox): Useful for selecting one option from a larger set.
+# Multi-select Dropdown (st.multiselect): Allows selection of multiple options from a dropdown list.
+# Checkboxes (st.checkbox): For toggle options.
+# Slider (st.slider): To select a value from a range.
+# Text Input (st.text_input): For text input.
+# Number Input (st.number_input): For numerical input.
+# Date Input (st.date_input): To input dates.
+# Time Input (st.time_input): For inputting time values.
+# File Uploader (st.file_uploader): To upload files.
+# Buttons (st.button): Regular clickable buttons.
