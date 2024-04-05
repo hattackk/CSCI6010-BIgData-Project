@@ -54,6 +54,7 @@ if __name__ == '__main__':
     df_reviews = df_reviews.astype({'voted_up': int})
     df_reviews.loc[df_reviews['voted_up'] == 0, 'voted_up'] = -1
 
+
     ### Game Similarities
     nc = ['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price']
     cc = ['review_score_desc', 'developer', 'publisher', 'owners']
