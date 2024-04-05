@@ -1,203 +1,169 @@
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.compose import ColumnTransformer
-from sklearn.pipeline import Pipeline
-from sklearn.impute import SimpleImputer
-from sklearn.neighbors import NearestNeighbors
 import os
 import psycopg2
+
+from model import RecommenderModel
 import pandas as pd
-from scipy.sparse import coo_matrix
-from sklearn.decomposition import TruncatedSVD
 import numpy as np
-from scipy.sparse import coo_matrix
-from sklearn.metrics.pairwise import cosine_similarity
-from sklearn.preprocessing import normalize
+from dotenv import load_dotenv
 
-### Review Similarities
+from model import RecommenderModel
+from numpy.random import randint
+from tabulate import tabulate
 
-# Database connection parameters
-usr = os.environ.get('DB_USER')
-if usr is None:
-    raise Exception("Environment variable 'DB_USER' not found. Please set it and try again.")
+load_dotenv()
+pd.set_option('display.max_columns', None)
 
-pwd = os.environ.get("DB_PWD")
-if pwd is None:
-    raise Exception("Environment variable 'DB_PWD' not found. Please set it and try again.")
+def load_dataframe_from_pickle(file_path):
+    try:
+        df = pd.read_pickle(file_path)
+        return df
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+        return None
+    except Exception as e:
+        print(f"Error loading file {file_path}: {e}")
+        return None
 
-db_host = os.environ.get("DB_HOST")
-if db_host is None:
-    raise Exception("Environment variable 'DB_HOST' not found. Please set it and try again.")
+class ModelTrainer():
 
-db_port = os.environ.get("DB_PORT")
-if db_port is None:
-    raise Exception("Environment variable 'DB_PORT' not found. Please set it and try again.")
+    def __init__(self, name='test'):
+        ### Review Similarities
+        table_names = ["games", "game_reviews", "game_rating", "game_review_summary", "steam_users", "app_type"]
 
-db_db = os.environ.get("DB_DATABASE")
-if db_db is None:
-    raise Exception("Environment variable 'DB_DATABASE' not found. Please set it and try again.")
+        dataframes = {}
+        for table_name in table_names:
+            file_path = f"cache/{table_name}.pkl"
+            df = load_dataframe_from_pickle(file_path)
+            if df is not None:
+                dataframes[table_name] = df
 
-conn = psycopg2.connect(
-    dbname=db_db,
-    user=usr,
-    password=pwd,
-    host=db_host,
-    port=db_port
-)
-
-
-cur = conn.cursor()
-
-cur.execute("SELECT steamid, application_id, sentiment_score FROM game_reviews")
-rows = cur.fetchall()
-# Convert to pandas DataFrame
-df_reviews = pd.DataFrame(rows, columns=[desc[0] for desc in cur.description])
+        self.users_df=dataframes['steam_users']
+        game_reviews_df=dataframes['game_reviews']
+        game_rating=dataframes['game_rating']
+        game_review_summary=dataframes['game_review_summary']
+        print(f"total reviews == {len(game_reviews_df)}")
+        game_df=dataframes['games']
+        types_df=dataframes['app_type']
 
 
-### Game Similarities
-nc = ['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price']
-cc = ['review_score_desc', 'developer', 'publisher', 'owners']
-columns = nc + cc
-query = f"""
-SELECT *
-FROM games 
-join game_rating 
-on games.game_id = game_rating.game_id 
-join game_review_summary 
-on game_review_summary.game_id = games.game_id 
-"""
-cur.execute(query)
-rows = cur.fetchall()
-df_games = pd.DataFrame(rows, columns=[desc[0] for desc in cur.description])
-df_games = df_games.loc[:, ~df_games.columns.duplicated()].copy()
+        game_reviews_df = game_reviews_df.astype({'voted_up': int})
+        game_reviews_df.loc[game_reviews_df['voted_up'] == 0, 'voted_up'] = -1
 
 
-class RecommenderModel:
-    def __init__(self, player_similarity_weight=0.5):
-        self.game_nn_model = None
-        self.player_matrix = None
-        self.user_index_mapping = None
-        self.game_index_mapping = None
-        self.user_game_matrix_csr = None
-        self.player_similarity_weight = player_similarity_weight
-        self.game_similarity_weight = 1 - player_similarity_weight
-        self.game_name_df = None
+        game_df = game_df.loc[:, ~game_df.columns.duplicated()].copy()
 
-    def train_user_similaries(self, df, n_components=50):
-        # TODO: This is broken, fix it.
-        """
-        trains the TruncatedSVD matrix for user similarities based on sentiment score
-        :param df: dataframe with steamid, application_id, sentiment_score
-        :return: None
-        """
-        df = df.copy()
-        # use a sparse matrix representation of the matrix
-        df['steamid'] = df['steamid'].astype("category")
-        df['game_id'] = df['application_id'].astype("category")
+        # make sure both dfs have same games
+        game_reviews_df = game_reviews_df.query('application_id in @game_df.game_id.unique()')
+        game_df = game_df.query('game_id in @game_reviews_df.application_id.unique()')
+        game_reviews_df = game_reviews_df.query('application_id in @game_df.game_id.unique()')
+        # Print unique game_id values from game_df
+        print("Unique game_id in game_df:", len(game_df['game_id'].unique()))
 
-        row_ind = df['steamid'].cat.codes
-        col_ind = df['game_id'].cat.codes
-
-        user_game_matrix_sparse = coo_matrix(
-            (df['sentiment_score'], (row_ind, col_ind)),
-            shape=(df['steamid'].nunique(), df['game_id'].nunique())
-        )
-        user_game_matrix_csr = user_game_matrix_sparse.tocsr()
-
-        svd = TruncatedSVD(n_components=n_components, random_state=42)
-
-        player_matrix = svd.fit_transform(user_game_matrix_csr)
-        user_index_mapping = {steamid: index for index, steamid in enumerate(df_reviews['steamid'].cat.categories)}
-        game_index_mapping = {index: game_id for index, game_id in enumerate(df_reviews['game_id'].cat.categories)}
-        self.player_matrix = player_matrix
-        self.user_game_matrix_csr = user_game_matrix_csr
-        self.user_index_mapping = user_index_mapping
-        self.game_index_mapping = game_index_mapping
-
-    def train_game_similarities(
-            self,
-            df,
-            numerical_cols=None,
-            categorical_cols=None
-    ):
-        if numerical_cols is None:
-            numerical_cols = ['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price']
-        if categorical_cols is None:
-            categorical_cols = ['review_score_desc', 'developer', 'publisher', 'owners']
-
-        numerical_transformer = Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='mean')),
-            ('scaler', StandardScaler())
-        ])
-
-        categorical_transformer = Pipeline(steps=[
-            ('imputer', SimpleImputer(strategy='most_frequent')),
-            ('onehot', OneHotEncoder(handle_unknown='ignore'))
-        ])
-
-        # Combine the numerical and categorical pipelines
-        preprocessor = ColumnTransformer(
-            transformers=[
-                ('num', numerical_transformer, numerical_cols),
-                ('cat', categorical_transformer, categorical_cols)
-            ])
-
-        # Apply the transformations to the games DataFrame
-
-        game_features = preprocessor.fit_transform(df)
-        game_nn_model = NearestNeighbors(n_neighbors=5, algorithm='auto').fit(game_features)
-        self.game_nn_model = game_nn_model
-        self.game_name_df = df[['game_id', 'game_name']]
+        # Print unique application_id values from game_reviews_df
+        print("Unique application_id in game_reviews_df:", len(game_reviews_df['application_id'].unique()))
 
 
-    def predict(self, player_id: int, num_recommendations: int=5):
+        # add types cols to games
+        game_df = pd.merge(game_df, game_rating, on='game_id', how='left')
+        game_df = pd.merge(game_df, game_review_summary, on='game_id', how='left')
+        game_df = pd.merge(game_df, types_df, left_on='game_id', right_on='app_id', how='left')
+        game_df['genres']=game_df['genres'].apply(lambda x: x if isinstance(x, list) else [])
+        game_df['categories']=game_df['categories'].apply(lambda x: x if isinstance(x, list) else [])
 
-        # Get the player's row in the CSR matrix
-        if player_id not in self.user_index_mapping:
-            print("User not found.")
-            return []
-        player_idx = self.user_index_mapping[player_id]
+        # clean datas
+        # df.replace([np.inf, -np.inf], np.nan, inplace=True)
+        # Fill NaN with a default value, e.g., 0
+        # df.fillna(0, inplace=True)
+        # df['app_id'] = df['app_id'].astype(int)
+        # df['metacritic'] = df['metacritic'].astype(int)
+        
+        game_df = game_df.loc[:, ~game_df.columns.duplicated()].copy()
 
-        # Calculate cosine similarity between this player and all other player
-        player_similarities = cosine_similarity(
-            self.player_matrix[player_idx].reshape(1, -1),
-            self.player_matrix
-        ).flatten()
+        self.game_df=game_df
+        self.game_reviews_df = game_reviews_df
+        self.model_name=f'{name}.pkl.xz'
+        self.all_numerical_cols=['num_reviews', 'review_score', 'total_positive', 'total_negative', 'price']
+        self.all_categorical_cols=['review_score_desc', 'developer', 'publisher', 'owners']
+        self.all_multi_label_cols=['genres', 'categories']
+        self.numerical_cols=self.all_numerical_cols
+        self.categorical_cols=self.all_categorical_cols
+        self.multi_label_cols=self.all_multi_label_cols
+        self.test_users = []
 
-        # Get the indices of the top similar users
-        # first would be the player themselves
-        top_similar_players_indices = player_similarities.argsort()[::-1][1:]
+    def set_numerical_cols(self, selection):
+        self.numerical_cols = selection
 
-        # Aggregate the game preferences of similar users
+    def set_categorical_cols(self, selection):
+        self.categorical_cols = selection
 
-        similar_players_game_interactions = self.user_game_matrix_csr[top_similar_players_indices]
-        similar_players_game_scores = similar_players_game_interactions.sum(axis=0).A1
+    def set_multi_cols(self, selection):
+        self.multi_label_cols = selection
 
-        # Use the KNN model to find games similar to those the user has reviewed positively
-        player_interacted_indices = self.user_game_matrix_csr.getrow(player_idx).nonzero()[1]
-        player_positive_game_indices = [
-            i for i in player_interacted_indices if player_interacted_indices[player_idx, i] > 0
-        ]
-        # we need to normalize to make sure our weights can be added properly
-        normalized_game_features = normalize(self.user_game_matrix_csr)
-        knn_scores = np.zeros(normalized_game_features.shape[1])
+    def get_possible_numerical_cols(self):
+        return self.all_numerical_cols
 
-        for game_idx in player_positive_game_indices:
-            game_feature_vector = normalized_game_features.getrow(game_idx)
-            distances, similar_game_indices = self.game_nn_model.kneighbors(
-                game_feature_vector,
-                n_neighbors=num_recommendations
-            )
+    def get_possible_categorical_cols(self):
+        return self.all_categorical_cols
 
-            for i, idx in enumerate(similar_game_indices.flatten()):
-                # Inverse of distance can serve as a similarity score; avoid division by zero
-                score = 1 / (1 + distances.flatten()[i])
-                knn_scores[idx] += score
+    def get_possible_multi_cols(self):
+        return self.all_multi_label_cols
+    
+    def set_model_name(self, name):
+        self.model_name = name
 
-        svd_scores_normalized = similar_players_game_scores / np.max(similar_players_game_scores)
-        knn_scores_normalized = knn_scores / np.max(knn_scores)
-        combined_scores = (self.player_similarity_weight * svd_scores_normalized) + (self.game_similarity_weight * knn_scores_normalized)
+    def execute_train(self, test=None):
+        model = RecommenderModel()
 
-        top_game_indices = combined_scores.argsort()[::-1][:num_recommendations]
-        recommended_game_ids = [self.game_index_mapping[idx] for idx in top_game_indices]
-        recommended_games = self.game_name_df[self.game_name_df['game_id'].isin(recommended_game_ids)]
-        return recommended_games
+        # only pass cols in selected columns (and ids)
+        pd.set_option('display.max_columns', None)
+        all_selected = self.numerical_cols+self.categorical_cols+self.multi_label_cols
+        all_defaults = self.all_numerical_cols + self.all_categorical_cols + self.all_multi_label_cols
+        not_selected = [col for col in all_defaults if col not in all_selected]
+        train_game_df = self.game_df.copy()
+        # train_game_df=train_game_df.drop(columns=not_selected)
+
+        train_reviews_df = self.game_reviews_df
+
+        if test is not None and test > 0:
+            print(f'saving {test} for test')
+            filtered_users_df = self.users_df[self.users_df['num_reviews'] > 1]
+            merged_df = pd.merge(train_reviews_df, filtered_users_df, on='steamid')
+            voted_up_df = merged_df[merged_df['voted_up'] == 1]
+            test_df = voted_up_df.sample(n=test, random_state=42)  # Use a random state for reproducibility
+            test_indices = test_df.index
+            train_reviews_df = train_reviews_df.drop(test_indices)
+            self.test_users=test_df
+        model.train_game_similarities(train_game_df, numerical_cols=['review_score'], categorical_cols=['review_score_desc'], multi_label_cols=self.multi_label_cols)
+        model.train_user_similaries(train_reviews_df)
+        model.save(self.model_name)
+        self.model = RecommenderModel.load(self.model_name)
+
+    def test_row(self, row):
+        recommendation = self.model.predict(row['steamid'])
+        print(tabulate(recommendation, showindex=False, headers='keys', tablefmt='psql'))
+        return recommendation
+    
+
+    def test_eval(self):
+        self.test_users['result'] = self.test_users.apply(self.test_row, axis=1) 
+        for index, row in self.test_users.iterrows():
+            rec=row['result']
+            target=row['application_id']      
+            print(f'Expected: {target}') 
+            print(f'Got :{rec}')  
+        def check_expected(row):
+            return row['application_id'] in row['result']
+        self.test_users['got_expected'] = self.test_users.apply(check_expected, axis=1)   
+        print(self.test_users.head(30))
+
+
+        
+    
+
+if __name__ == '__main__':
+    trainer = ModelTrainer()
+    # trainer.set_multi_cols([])
+    trainer.execute_train(test=30)
+    trainer.test_eval()
+
+
