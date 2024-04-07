@@ -40,6 +40,7 @@ if button:
         st.session_state.trainer.set_numerical_cols(numerical_cols)
         st.session_state.trainer.set_categorical_cols(category_cols)
         st.session_state.trainer.set_multi_cols(multi_cols)
+        st.session_state.trainer.set_model_name(model_name)
         test = test_count if test_enabled else 0
         st.session_state.trainer.execute_train(test=test)
         st.success('Analysis Ready.')
