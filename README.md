@@ -69,7 +69,15 @@ print(news)
 If an error occurs during the API request, the methods will return `None`. Make sure to handle this case in your code.
 
 
+# Dashboards
+### Training and Recommendations are handled through the dashboard services in the /dashboard directory
 
-## Contributing
+## Training 
 
-Contributions are welcome! If you find any bugs or have suggestions for improvement, please open an issue on the GitHub repository.
+<img width="1292" alt="image" src="https://github.com/hattackk/CSCI6010-BIgData-Project/assets/36685328/b9ce7223-18d8-451e-aabd-c40cfefa226b">
+
+## Recommendations
+
+<img width="1292" alt="image" src="https://github.com/hattackk/CSCI6010-BIgData-Project/assets/36685328/ef2c4a1c-c1ed-448b-b5be-6ba0eea13813">
+
+
