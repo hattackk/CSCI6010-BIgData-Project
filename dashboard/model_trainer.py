@@ -119,7 +119,6 @@ class ModelTrainer():
         train_reviews_df = self.game_reviews_df
 
         if test is not None and test > 0:
-            print(f'saving {test} for test')
             filtered_users_df = self.users_df[self.users_df['num_reviews'] > 1]
             merged_df = pd.merge(train_reviews_df, filtered_users_df, on='steamid')
             voted_up_df = merged_df[merged_df['voted_up'] == 1]
@@ -133,27 +132,34 @@ class ModelTrainer():
         self.model = RecommenderModel.load(self.model_name)
 
     def test_row(self, row):
-        recommendation = self.model.predict(row['steamid'])
-        print(tabulate(recommendation, showindex=False, headers='keys', tablefmt='psql'))
+        recommendation=pd.DataFrame([{'game_id': 'NaN'}])
+        num_recs=1
+        while len(recommendation[recommendation['game_id'] == row['application_id']]) < 1:
+            recommendation = self.model.predict(row['steamid'], num_recommendations=num_recs)
+            num_recs+=5
         return recommendation
     
 
     def test_eval(self):
-        self.test_users['result'] = self.test_users.apply(self.test_row, axis=1) 
+        results=[]
+        # Compute the result and check for each user
         for index, row in self.test_users.iterrows():
-            rec=row['result']
-            target=row['application_id']      
-            print(f'Expected: {target}') 
-            print(f'Got :{rec}')  
-        def check_expected(row):
-            return row['application_id'] in row['result']
-        self.test_users['got_expected'] = self.test_users.apply(check_expected, axis=1)   
-        print(self.test_users.head(30))
-        return self.test_users
+            rec = self.test_row(row)
+            target = row['application_id']
+            find_target_df = self.game_df[self.game_df['game_id']==target]
+            target_game=''
+            if not find_target_df.empty:
+                target_game = find_target_df.iloc[0]['game_name']
+            else:
+                print('ERROR: Test target application ID does not match any games.')
+                continue # no matching game for this review??
+            got_expected = len(rec[rec['game_id'] == target]) > 0
 
+            # Append to new_data
+            results.append({'test_game': target_game,'application_id': target, 'got_expected': got_expected,
+                            'recommendations': rec['game_name'], 'result': len(rec)})
 
-        
-    
+        return pd.DataFrame(results)
 
 if __name__ == '__main__':
     trainer = ModelTrainer()
