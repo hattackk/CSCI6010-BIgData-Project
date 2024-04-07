@@ -81,16 +81,13 @@ class MultiHotEncoder(BaseEstimator, TransformerMixin):
 
         return np.asarray([input_features[i] + "_" + str(t) for i in range(len(cats)) for t in cats[i]])
 
-
 class RecommenderModel:
-    def __init__(self, player_similarity_weight=0.5):
+    def __init__(self):
         self.game_nn_model = None
         self.player_matrix = None
         self.user_index_mapping = None
         self.game_index_mapping = None
         self.user_game_matrix_csr = None
-        self.player_similarity_weight = player_similarity_weight
-        self.game_similarity_weight = 1 - player_similarity_weight
         self.game_name_df = None
         self.game_features = None
 
@@ -115,10 +112,12 @@ class RecommenderModel:
         )
         user_game_matrix_csr = user_game_matrix_sparse.tocsr()
         user_index_mapping = {steamid: index for index, steamid in enumerate(df['steamid'].cat.categories)}
+        index_to_steamid = {i: steamid for steamid, i in user_index_mapping.items()}
         game_index_mapping = {index: game_id for index, game_id in enumerate(df['game_id'].cat.categories)}
 
         self.user_game_matrix_csr = user_game_matrix_csr
         self.user_index_mapping = user_index_mapping
+        self.index_to_steamid = index_to_steamid
         self.game_index_mapping = game_index_mapping
 
     def train_game_similarities(
@@ -159,35 +158,52 @@ class RecommenderModel:
         self.game_features = game_features
 
 
-    def predict(self, player_id: int, num_recommendations: int=5):
+    def predict(self, player_id: int, num_recommendations: int = 5, player_similarity_filter=.9, player_similarity_weight=.5):
+        player_idx = self.get_player_index(player_id)
+        if player_idx is None:
+            return []
 
-        # Get the player's row in the CSR matrix
+        player_similarities = self.calculate_cosine_similarity(player_idx)
+        top_similar_players_indices = self.get_most_similar_players_indices(player_similarities, player_similarity_filter)
+        similar_players_game_scores = self.aggregate_game_preferences(top_similar_players_indices)
+        knn_scores = self.find_similar_games_using_KNN(player_idx, num_recommendations)
+
+        combined_scores = self.compute_combined_scores(similar_players_game_scores, knn_scores, player_similarity_weight)
+        return self.get_top_recommendations(combined_scores, num_recommendations)
+
+
+    def get_player_index(self, player_id):
         if player_id not in self.user_index_mapping:
             print("User not found.")
-            return []
-        player_idx = self.user_index_mapping[player_id]
+            return None
+        return self.user_index_mapping[player_id]
 
-        # Calculate cosine similarity between this player and all other player
-        player_similarities = cosine_similarity(
+    def calculate_cosine_similarity(self, player_idx):
+        return cosine_similarity(
             self.user_game_matrix_csr[player_idx].reshape(1, -1),
             self.user_game_matrix_csr
         ).flatten()
 
-        # filter out exact matches since those players will not give useful reviews
-        nbr_exact = len(player_similarities[player_similarities == 1.])
+    def get_most_similar_players_indices(self, player_similarities, player_similarity_filter):
+        # Exclude exact matches (similarity of 1)
+        player_similarities[player_similarities == 1.] = 0
 
-        top_similar_players_indices = player_similarities.argsort()[::-1][nbr_exact:]
+        # Apply the similarity threshold
+        eligible_indices = player_similarities >= player_similarity_filter
 
-        # Aggregate the game preferences of similar users
+        # Get indices of players who meet the threshold
+        top_similar_players_indices = player_similarities.argsort()[::-1][eligible_indices]
+        return top_similar_players_indices
+
+    def aggregate_game_preferences(self, top_similar_players_indices):
         similar_players_game_interactions = self.user_game_matrix_csr[top_similar_players_indices]
-        similar_players_game_scores = similar_players_game_interactions.sum(axis=0).A1
+        return similar_players_game_interactions.sum(axis=0).A1
 
-        # Use the KNN model to find games similar to those the user has reviewed positively
+    def find_similar_games_using_KNN(self, player_idx, num_recommendations):
         player_interacted_indices = self.user_game_matrix_csr.getrow(player_idx).nonzero()[1]
         player_positive_game_indices = [
             i for i in player_interacted_indices if self.user_game_matrix_csr[player_idx, i] > 0
         ]
-        # we need to normalize to make sure our weights can be added properly
         normalized_game_features = normalize(self.game_features)
         knn_scores = np.zeros(normalized_game_features.shape[0])
 
@@ -199,14 +215,33 @@ class RecommenderModel:
             )
 
             for i, idx in enumerate(similar_game_indices.flatten()):
-                # Inverse of distance can serve as a similarity score; avoid division by zero
-                score = 1 / (1 + distances.flatten()[i])
+                distance = distances.flatten()[i]
+                if np.isnan(distance):  # Check for NaN
+                    print('NaNs!')
+                    score = 0  # Handle NaN case, e.g., by setting score to 0
+                else:
+                    score = 1 / (1 + distance)
                 knn_scores[idx] += score
 
-        cosine_scores_normalized = similar_players_game_scores / np.max(similar_players_game_scores)
-        knn_scores_normalized = knn_scores / np.max(knn_scores)
-        combined_scores = (self.player_similarity_weight * cosine_scores_normalized) + (self.game_similarity_weight * knn_scores_normalized)
+        return knn_scores
 
+    def compute_combined_scores(self, similar_players_game_scores, knn_scores, player_similarity_weight):
+        # Transform negative scores to a positive dispreference scale
+        transformed_player_scores = np.where(similar_players_game_scores > 0, 
+                                            similar_players_game_scores, 
+                                            1 + similar_players_game_scores)
+        transformed_knn_scores = np.where(knn_scores > 0, 
+                                        knn_scores, 
+                                        1 + knn_scores)
+        
+        game_similarity_weight = 1 - player_similarity_weight
+
+        # Combine scores with weights
+        combined_scores = (player_similarity_weight * transformed_player_scores) + (game_similarity_weight * transformed_knn_scores)
+
+        return combined_scores
+
+    def get_top_recommendations(self, combined_scores, num_recommendations):
         top_game_indices = combined_scores.argsort()[::-1][:num_recommendations]
         recommended_game_ids = [self.game_index_mapping[idx] for idx in top_game_indices]
         recommended_games = self.game_name_df[self.game_name_df['game_id'].isin(recommended_game_ids)]
