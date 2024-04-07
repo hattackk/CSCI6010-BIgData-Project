@@ -85,7 +85,7 @@ with st.form(key='train_params'):
     test_count=st.slider('Test count:', 1,100)
     button=st.form_submit_button('Initiate Train.')
 if button:
-    with st.spinner('Analyzing user'):
+    with st.spinner('Training model...'):
         st.session_state.trainer.set_numerical_cols(numerical_cols)
         st.session_state.trainer.set_categorical_cols(category_cols)
         st.session_state.trainer.set_multi_cols(multi_cols)
