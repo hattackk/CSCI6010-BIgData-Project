@@ -56,6 +56,7 @@ def spider_chart(title, categories, lists_of_category_values):
         ax.fill(angles, values, alpha=0.1)
 
     plt.legend(loc='upper right', bbox_to_anchor=(0.1, 0.1))
+    st.pyplot(plt)
 
 def heatmap(data, title="Heatmap", cmap='viridis', annot=False, fmt=".2f"):
     """
@@ -79,6 +80,29 @@ def heatmap(data, title="Heatmap", cmap='viridis', annot=False, fmt=".2f"):
     plt.title(title)
 
     # Display the heatmap in Streamlit
+    st.pyplot(plt)
+
+def adjusted_heatmap(data, title="Heatmap", cmap='viridis', annot=False, fmt=".2f"):
+    """
+    Create a heatmap for displaying in Streamlit.
+    ...
+    """
+
+    # Set a large figure size to accommodate all genres
+    plt.figure(figsize=(10, 8))  # Adjust the size to your needs
+
+    # Rotate x-axis labels if necessary
+    ax = sns.heatmap(data, cmap=cmap, annot=annot, fmt=fmt)
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
+
+    # Show only annotations for values above a certain threshold
+    if annot:
+        for text in ax.texts:
+            t = float(text.get_text())
+            if abs(t) < -1.0:  # Set a threshold value that makes sense for your data
+                text.set_text('')
+
+    plt.title(title)
     st.pyplot(plt)
 
 def parallel_coordinates(df, dimensions, labels, sample_size=None, title='Parallel Coordinates Plot'):
@@ -193,15 +217,174 @@ for table_name in table_names:
     if df is not None:
         dataframes[table_name] = df
 
-users_df=dataframes['steam_users']
-game_reviews_df=dataframes['game_reviews']
-print(f"total reviews == {len(game_reviews_df)}")
-game_review_summary_df=dataframes['game_review_summary']
-game_rating_df=dataframes['game_rating']
-games_df=dataframes['games']
-types_df=dataframes['app_type']
-games_df = pd.merge(games_df, types_df, left_on='game_id', right_on='app_id', how='left')
-game_reviews_df = pd.merge(game_reviews_df, games_df, left_on='application_id', right_on='game_id', how='left')
+st.session_state.users_df=dataframes['steam_users']
+st.session_state.game_reviews_df=dataframes['game_reviews']
+print(f"total reviews == {len(st.session_state.game_reviews_df)}")
+st.session_state.game_review_summary_df=dataframes['game_review_summary']
+st.session_state.game_rating_df=dataframes['game_rating']
+st.session_state.games_df=dataframes['games']
+st.session_state.types_df=dataframes['app_type']
+st.session_state.games_df = pd.merge(st.session_state.games_df, st.session_state.types_df, left_on='game_id', right_on='app_id', how='left')
+st.session_state.game_reviews_df = pd.merge(st.session_state.game_reviews_df, st.session_state.games_df, left_on='application_id', right_on='game_id', how='left')
+
+def get_user_sentiment_per_genre(user_filter):
+    user_reviews=st.session_state.game_reviews_df[st.session_state.game_reviews_df['steamid']==user_filter]
+    # Explode 'genres' into separate rows
+    genres_exploded = user_reviews[['genres', 'sentiment_score']].explode('genres')
+
+    # Explode 'categories' into separate rows
+    categories_exploded = user_reviews[['categories', 'sentiment_score']].explode('categories')
+
+    # Concatenate the exploded DataFrames
+    combined_exploded = pd.concat([genres_exploded, categories_exploded.rename(columns={'categories': 'genres'})])
+
+    # Group by each item in 'genres' (which now includes categories) and calculate the average sentiment score
+    return combined_exploded.groupby('genres')['sentiment_score'].mean().reset_index()
+
+def user_display(user_filter):
+    user_reviews=st.session_state.game_reviews_df[st.session_state.game_reviews_df['steamid']==user_filter]
+    avg_sentiment= get_user_sentiment_per_genre(user_filter)
+
+
+    bar_chart(avg_sentiment, 'genres', 'sentiment_score', chart_title='Average Sentiment Score by Genre/Category', x_label='Genres/Categories', y_label='Average Sentiment Score')
+    user_review_content = user_reviews['review']
+
+    # Combine all reviews into one large text
+    text = " ".join(review for review in user_review_content)
+
+    wordcloud('Review Wordcloud', text)
+    st.session_state.user_categories_selected = 4 # set default
+
+    with st.form('review_stats'):
+        num_categories=st.slider('Number of Categories:', 2, 10, st.session_state.user_categories_selected)
+        categories_selected = st.form_submit_button('Reanalyze Categories')
+
+    if categories_selected:
+        st.session_state.user_categories_selected = num_categories
+    
+
+    st.markdown(f'#### User `{user_filter}` Top {st.session_state.user_categories_selected} categories.')
+    topX = avg_sentiment.sort_values('sentiment_score', ascending=False).head(st.session_state.user_categories_selected)
+    topX
+
+    charts = ['votes_up', 'votes_funny', 'weighted_vote_score', 'comment_count'] # 1 chart each with these as Y axis
+    cats  = topX['genres'].values # these are the x axes on each chart
+    labels = {'votes_up': 'Votes Up', 'votes_funny': 'Votes Funny', 'weighted_vote_score': 'Weighted Vote Score', 'comment_count': 'Comment Count'}
+
+    # now we have top X categories, need to go back and filter user_reviews df for rows with those
+    top_category_reviews = user_reviews[user_reviews.apply(lambda row: any(item in cats for item in row['categories']) or
+                                         any(item in cats for item in row['genres']), axis=1)]
+    
+    top_category_reviews
+
+    cols = st.columns(len(charts))
+    for i, col in enumerate(cols):
+        with col:
+            chart = charts[i]
+            plot_data = {}
+            for target in cats:
+                # Sum values for each genre/category
+                sum_value = top_category_reviews[top_category_reviews.apply(lambda row: target in row['genres'] or target in row['categories'], axis=1)][chart].sum()
+                plot_data[target] = sum_value
+
+            # Convert plot_data to a DataFrame
+            plot_df = pd.DataFrame(list(plot_data.items()), columns=['Genre/Category', chart])
+
+            # Creating the line plot
+            plt.figure(figsize=(10, 6))
+            plt.plot(plot_df['Genre/Category'], plot_df[chart], marker='o')
+
+            # Adding title and labels
+            plt.title(f'Sum of {labels[chart]} per Genre/Category')
+            plt.xlabel('Genre/Category')
+            plt.ylabel(labels[chart])
+
+            st.pyplot(plt)
+
+def user_recommendations(user_filter):
+    st.markdown('# User Recommendations')
+    user_reviews=st.session_state.game_reviews_df[st.session_state.game_reviews_df['steamid']==user_filter]
+    st.session_state.top_similar_players_indices = None
+    with st.form(key='recommendations'):
+        c1,c2 = st.columns(2)
+        with c1:
+            model_name=st.text_input('Model name','test.pkl.xz')
+            similarity_weight = st.slider('User similarity weighting (game weight will be inverse)', 0.0,1.0,.5)
+            similarity_filter = st.slider('User similarity filter', -1.0,1.0,.85)
+        with c2:
+            model_button=st.form_submit_button('Get recommendations.')
+
+        if model_button:
+            model = RecommenderModel.load(f'./{model_name}')
+            users = list(model.user_index_mapping.keys())
+            player_id = user_filter
+            num_recommendations = 5
+            print(dir(model))
+            player_idx = model.get_player_index(player_id) 
+            if player_idx is None:
+                st.markdown("## Player not found in model :(")
+
+            player_similarities = model.calculate_cosine_similarity(player_idx)
+            top_similar_players_indices = model.get_most_similar_players_indices(player_similarities, similarity_filter)
+            similar_players_game_scores = model.aggregate_game_preferences(top_similar_players_indices)
+            knn_scores = model.find_similar_games_using_KNN(player_idx, num_recommendations)
+
+            combined_scores = model.compute_combined_scores(similar_players_game_scores, knn_scores, similarity_weight)
+            recommendations = model.get_top_recommendations(combined_scores, num_recommendations)
+            recommendations
+            
+            
+            st.session_state.top_similar_players_indices = top_similar_players_indices
+            f"Similar users found: {len(top_similar_players_indices)}" 
+
+    if st.session_state.top_similar_players_indices is not None:
+        steamids = [model.index_to_steamid[index] for index in st.session_state.top_similar_players_indices]
+        most_similar_users = st.session_state.users_df[st.session_state.users_df['steamid'].isin(steamids)]
+
+        user_reviews = st.session_state.game_reviews_df[st.session_state.game_reviews_df['steamid'].isin(most_similar_users['steamid'])]
+        
+        user_reviews
+
+        user_genre_sentiment_dfs = []
+        for user in steamids:
+            user_sentiment_df = get_user_sentiment_per_genre(user)
+            user_sentiment_df['user'] = user
+            user_genre_sentiment_dfs.append(user_sentiment_df)
+        # Concatenate all user DataFrames
+        combined_df = pd.concat(user_genre_sentiment_dfs)
+        heatmap_df = combined_df.pivot_table(index='user', columns='genres', values='sentiment_score', fill_value=0)
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            selected_users_df = heatmap_df.iloc[:5]
+            categories = list(selected_users_df.columns)
+            lists_of_category_values = selected_users_df.values.tolist()
+            title = "User Comparison by Genre Sentiment"
+            spider_chart(title, categories, lists_of_category_values)
+        with col2:
+            heatmap(heatmap_df, title="Most similar users", cmap='coolwarm')
+
+           
+        c1,c2 = st.columns(2)
+        with c1:
+            pivot_table = user_reviews.pivot_table(values='sentiment_score', index='game_name', columns='steamid', fill_value=0)
+            heatmap(pivot_table, title="User Sentiment per game.")
+        with c2:
+            dimensions = ['votes_up', 'votes_funny', 'weighted_vote_score', 'comment_count']
+            labels = {'votes_up': 'Votes Up', 'votes_funny': 'Votes Funny', 'weighted_vote_score': 'Weighted Vote Score', 'comment_count': 'Comment Count'}
+            line_chart(user_reviews, dimensions, labels, 'User Review Stats')
+
+        with st.form(key='similar_users'):
+            selected_steamid = st.radio("Top 10 most similar users:", most_similar_users['steamid'])
+            button=st.form_submit_button('Inspect User.')
+
+        if button:
+            with st.spinner('Analyzing user'):
+                user_info = st.session_state.users_df[st.session_state.users_df['steamid'] == selected_steamid]
+                st.success('Analysis Ready.')
+
+            st.write(f"SteamID: {selected_steamid} (User Similarity Rank {most_similar_users[most_similar_users['steamid']==selected_steamid].index})")
+            user_display(selected_steamid)
 
 ## BEGIN DASHBOARD LOGIC ##
 st.set_page_config(
@@ -213,81 +396,13 @@ st.set_page_config(
 # dashboard title
 st.title("CSCI 6010 Steam Analytics Dashboard")
 
-users=users_df[users_df['steamid'].isin(game_reviews_df['steamid'].unique())].sort_values(by='num_reviews', ascending=False).head(100) # only get users that have reviews
+users=st.session_state.users_df[st.session_state.users_df['steamid'].isin(st.session_state.game_reviews_df['steamid'].unique())].sort_values(by='num_reviews', ascending=False).head(100) # only get users that have reviews
 user_filter = st.selectbox("Select a user.", users)
-
-user=users_df[users_df['steamid']==user_filter]
+user=users[users['steamid']==user_filter]
 user
 
-def userDisplay(user_filter):
-    user_reviews=game_reviews_df[game_reviews_df['steamid']==user_filter]
-    # Explode 'genres' into separate rows
-    genres_exploded = user_reviews[['genres', 'sentiment_score']].explode('genres')
-
-    # Explode 'categories' into separate rows
-    categories_exploded = user_reviews[['categories', 'sentiment_score']].explode('categories')
-
-    # Concatenate the exploded DataFrames
-    combined_exploded = pd.concat([genres_exploded, categories_exploded.rename(columns={'categories': 'genres'})])
-
-    # Group by each item in 'genres' (which now includes categories) and calculate the average sentiment score
-    avg_sentiment = combined_exploded.groupby('genres')['sentiment_score'].mean().reset_index()
-
-    bar_chart(avg_sentiment, 'genres', 'sentiment_score', chart_title='Average Sentiment Score by Genre/Category', x_label='Genres/Categories', y_label='Average Sentiment Score')
-    user_review_content = user_reviews['review']
-
-    # Combine all reviews into one large text
-    text = " ".join(review for review in user_review_content)
-
-    wordcloud('Review Wordcloud', text)
-
-    # Example usage
-    categories = ['A', 'B', 'C', 'D', 'E']
-    user1_values = [3, 5, 2, 4, 7]
-    user2_values = [4, 3, 6, 5, 8]
-
-    spider_chart("User Comparison", categories, [user1_values])
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.pyplot(plt)
-    with col2:
-        data = pd.DataFrame(np.random.rand(10, 10), columns=[f'Col{i}' for i in range(1, 11)])
-        heatmap(data, title="Most similar users", cmap='coolwarm', annot=True)
-
-    dimensions = ['votes_up', 'votes_funny', 'weighted_vote_score', 'comment_count']
-    labels = {'votes_up': 'Votes Up', 'votes_funny': 'Votes Funny', 'weighted_vote_score': 'Weighted Vote Score', 'comment_count': 'Comment Count'}
-
-    line_chart(user_reviews, dimensions, labels, 'User Review Stats')
-
-
-userDisplay(user_filter)
-
-# get most similar users, mock for now
-most_similar_users = users[users_df['steamid'] != user_filter].sample(10)
-user_reviews = game_reviews_df[game_reviews_df['steamid'].isin(most_similar_users['steamid'])]
-dimensions = ['votes_up', 'votes_funny', 'weighted_vote_score', 'comment_count']
-labels = {'votes_up': 'Votes Up', 'votes_funny': 'Votes Funny', 'weighted_vote_score': 'Weighted Vote Score', 'comment_count': 'Comment Count'}
-pivot_table = user_reviews.pivot_table(values='sentiment_score', index='recommendationid', columns='steamid', fill_value=0)
-
-c1,c2 = st.columns(2)
-with c1:
-    heatmap(pivot_table, title="User Sentiment per game.")
-with c2:
-    parallel_coordinates(user_reviews, dimensions, labels, title='Game Reviews - Parallel Coordinates Plot')
-
-with st.form(key='similar_users'):
-    selected_steamid = st.radio("Top 10 most similar users:", most_similar_users['steamid'])
-    button=st.form_submit_button('Inspect User.')
-
-if button:
-    with st.spinner('Analyzing user'):
-        user_info = users_df[users_df['steamid'] == selected_steamid]
-        st.success('Analysis Ready.')
-
-    st.write(f"SteamID: {selected_steamid} (User Similarity Rank {most_similar_users[most_similar_users['steamid']==selected_steamid].index})")
-    userDisplay(selected_steamid)
-
+user_display(user_filter)
+user_recommendations(user_filter) 
 
 #  Streamlit form types:
 # Radio Buttons (st.radio): Good for selecting one option from a small set.
