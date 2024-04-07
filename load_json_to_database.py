@@ -10,7 +10,7 @@ from sqlalchemy import create_engine
 from database_tables import (
     Table, metadata,
     games_table, game_review_summary_table, game_rating_table,
-    steam_users_table, game_reviews_table
+    steam_users_table, game_reviews_table, app_type_table
 )
 
 
@@ -175,6 +175,37 @@ def parse_single_game_review(json_obj) -> Tuple[Dict, Dict]:
 
     return single_review, single_user
 
+def parse_game_description(payload = None):
+    result = {}
+
+    for app_id, description in payload.items():
+        try:
+            if description['success'] == False:
+                return None
+            
+            result['app_id'] = app_id
+            result['genres'] = [genre['description'] for genre in description['data'].get('genres', [])]
+            result['categories'] = [category['description'] for category in description['data'].get('categories', [])]
+            result['recommendations'] = description['data'].get('recommendations', {'total': None})['total']        
+            result['metacritic'] = description['data'].get('metacritic', {'score': -1})['score']
+        except KeyError as ke:
+            print(ke)
+    return result
+
+def process_details_file(review_file, conn):
+    descriptions = []
+    with open(review_file, 'r') as file:
+        for line in file:
+            try:
+                _, payload = eval(line)
+                game_description = parse_game_description(payload)
+                if game_description:
+                    descriptions.append(game_description)
+            except json.JSONDecodeError:
+                logging.error(f"Error decoding JSON from line: {line}")
+                continue
+    add_or_update(descriptions, app_type_table, conn)
+
 
 def process_review_file(review_file, conn):
     game_reviews = []
@@ -197,18 +228,20 @@ def process_review_file(review_file, conn):
 @click.option('--games_file', type=click.Path(exists=True), default=None, help='Path to games file')
 @click.option('--review_file', type=click.Path(exists=True), default=None, help='Path to review file')
 def main(games_file, review_file):
+
     # Connect to the database
     engine = create_engine(DATABASE_URI)
     metadata.create_all(engine)
     with engine.connect() as conn:
-        if not games_file:
-            games_file = 'data/games_top_100_2weeks.json'
-        # Process the files
-        process_game_file(games_file, conn)
+        process_details_file(games_file, conn)
+        #if not games_file:
+        #    games_file = 'data/games_top_100_2weeks.json'
+        ## Process the files
+        #process_game_file(games_file, conn)
 
-        if not review_file:
-            review_file = 'data/app_reviews_top_100_2weeks.json'
-        process_review_file(review_file, conn)
+        #if not review_file:
+        #    review_file = 'data/app_reviews_top_100_2weeks.json'
+        #process_review_file(review_file, conn)
 
 
 if __name__ == '__main__':

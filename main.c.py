@@ -27,6 +27,15 @@ DATABASE_URI = f'postgresql+psycopg2://{usr}:{pwd}@{db_host}:{db_port}/{db_db}'
 steam_api_client = SteamAPIClient(api_key=os.environ.get('STEAM_API_KEY'))
 
 
+
+'''
+This might be neat:
+from tqdm.contrib.discord import tqdm
+for i in tqdm(iterable, token='{token}', channel_id='{channel_id}')
+It will add the status bar to discord 
+https://tqdm.github.io/docs/contrib.discord/
+'''
+
 def select_and_update_game_status_to_processing(conn, game_review_download_status_table):
     """
     Selects a game ID and updates its status to 'processing' atomically.
@@ -107,81 +116,11 @@ def configure_logging(log_level):
     logging.getLogger(__name__).setLevel(log_level)
                         
 @click.command()
-@click.option('--download_details', is_flag=True, default=False, help='Should download details.')
-@click.option('--download_reviews', is_flag=True, default=False, help='Should download reviews.')
 @click.option('--upload_to_db', is_flag=True, default=False, help='Upload data to the database')
 @click.option('--write_json', is_flag=True, default=False, help='Write data to a JSON file')
 @click.option('--log_level', is_flag=False, default="INFO", help='Sets log level')
 @click.option('--back_off_timer', is_flag=False, default=60, help='Seconds to sleep if response fails.')
-
-def main(download_details,download_reviews,upload_to_db, write_json, log_level, back_off_timer ):
-    if download_details:
-        download_details(upload_to_db, write_json, log_level, back_off_timer)
-    elif download_reviews:
-        download_reviews(upload_to_db, write_json, log_level, back_off_timer)
-    else:
-        logger.error('No operation given')
-
-def download_details(upload_to_db, write_json, log_level, back_off_timer):
-    configure_logging(log_level)
-    logger.debug(DATABASE_URI)
-    engine = create_engine(DATABASE_URI)
-    if not engine:
-        logger.error(f"Failed to create engine with URI {DATABASE_URI}")
-        return
-
-    metadata.create_all(engine)
-    should_download_details = True
-    while should_download_details:
-        # game_review_download_status_table contains list of all games (in our dataset)
-        # select all the games that have not been started
-        stmt = select(game_review_download_status_table.c.game_id) \
-                .where(game_review_download_status_table.c.status == 'not_started') \
-                .order_by(game_review_download_status_table.c.game_id)
-        with engine.connect() as conn:
-            result = conn.execute(stmt).all()
-            if not result or len(result) == 0:
-                logger.warning("No games details to download.")
-                should_download_details = False
-                break
-            conn.commit()
-            app = select_and_update_game_status_to_processing(conn,game_review_download_status_table)
-        
-            logger.info(f'{len(result)} games details remaining, processing {app}')
-
-            time.sleep(0.5)
-            response = steam_api_client.get_app_details(app)
-            # Keep retrying until we get a response.
-            while not response:
-                logger.warning(f'No response received for {app}. Backing off for {back_off_timer} seconds.')
-                time.sleep(back_off_timer)
-                response = steam_api_client.get_app_details(app)
-            logger.debug(response)
-            try:
-                pass
-            except Exception as e:
-                logger.error(f"Error processing response for app {app}: {e}")
-
-            logger.debug(f"Back off timer : {back_off_timer}")
-            if upload_to_db:
-                with open('details.txt', 'a') as file:
-                    file.write(str((app,response))+'\n')
-                    
-            else:
-                # If no operation given, set the application status back to not_started
-                logger.warning("No option given, details will not be saved.")
-                logger.debug(f"Resetting status of {app}")
-                update_stmt = update(game_review_download_status_table).where(
-                    game_review_download_status_table.c.game_id == app
-                ).values(
-                    status='not_started'
-                )
-                # Execute the update statement
-                conn.execute(update_stmt)
-                conn.commit()
-
-
-def download_reviews(upload_to_db, write_json, log_level, back_off_timer):
+def main(upload_to_db, write_json, log_level, back_off_timer):
     configure_logging(log_level)
     logger.debug(DATABASE_URI)
     engine = create_engine(DATABASE_URI)
@@ -274,6 +213,9 @@ def download_reviews(upload_to_db, write_json, log_level, back_off_timer):
                                 filter="all",
                                 cursor=response.get('cursor','*')
                                 )
+
+                            
+
                         update_stmt = update(game_review_download_status_table).where(
                             game_review_download_status_table.c.game_id == app
                         ).values(
@@ -304,8 +246,6 @@ def download_reviews(upload_to_db, write_json, log_level, back_off_timer):
                 # Execute the update statement
                 conn.execute(update_stmt)
                 conn.commit()
-
-
 
 if __name__ == '__main__':
     main()

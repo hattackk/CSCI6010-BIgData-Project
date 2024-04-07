@@ -1,0 +1,11 @@
+version: '3'
+services:
+  spark:
+    build:
+      context: ./spark_pipeline
+      dockerfile: Dockerfile
+    ports:
+      - 4040:4040
+      - 4041:4041
+    volumes:
+      - ./spark_pipeline:/spark_pipeline
